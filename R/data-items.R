@@ -6,7 +6,7 @@
 #   - Big Five 25項目: psych::bfi.dictionary（英語原文をパッケージから取得）
 #   - PANAS 20項目:    Watson, Clark, & Tellegen (1988) 表1
 #   - Schwartz 10価値: Schwartz (1992) の定義文
-#   - 日本語訳:        第一著者による（英語版と同一のID・グループ構造）
+#   - 日本語:          PANASは妥当化済み尺度（川人ら, 2011）。BFI・Schwartzは著者訳
 #
 # 使い方: source("items_data.R")
 # ============================================================
@@ -14,9 +14,9 @@
 # ── Big Five（psych::bfi の25項目）──────────────────────────
 # 項目文は psych パッケージ内蔵の bfi.dictionary から直接取得する。
 # 戻り値: list(en, ja, factor, factor_labels, reversed)
-#' Big Five item texts (EN from psych::bfi.dictionary, JA by the first author)
+#' Big Five item texts (EN from psych::bfi.dictionary, JA by the author)
 #'
-#' @return list(en, ja, factor, factor_labels, reversed)
+#' @format See the source for structure.
 #' @export
 get_bfi_items <- function() {
   if (!requireNamespace("psych", quietly = TRUE))
@@ -71,7 +71,7 @@ get_bfi_items <- function() {
 
 
 # ── PANAS 20項目（Watson, Clark, & Tellegen, 1988）─────────
-#' PANAS item texts (EN original; JA author translation) and affect labels
+#' PANAS item texts (EN original; JA = validated Japanese scale) and affect labels
 #'
 #' @format See the source for structure.
 #' @export
@@ -88,29 +88,22 @@ panas_items <- list(
     NA07 = "ashamed",         NA08 = "nervous",
     NA09 = "jittery",         NA10 = "afraid"
   ),
-  ja = c(
-    PA01 = "興味のある",      PA02 = "興奮した",
-    PA03 = "力強い",          PA04 = "熱狂的な",
-    PA05 = "誇りに思う",      PA06 = "警戒している",
-    PA07 = "刺激を受けた",    PA08 = "断固とした",
-    PA09 = "注意深い",        PA10 = "活発な",
-    NA01 = "苦悩した",        NA02 = "動揺した",
-    NA03 = "罪悪感のある",    NA04 = "怖い",
-    NA05 = "敵意のある",      NA06 = "過敏な",
-    NA07 = "恥ずかしい",      NA08 = "神経質な",
-    NA09 = "ビクビクした",    NA10 = "恐ろしい"
-  )
+  # 日本語版は妥当化済み尺度を使用する（下の panas_ja_validated）。
+  # 開発初期にはスクリプト検証用の仮訳を用いたが、報告には使用しない。
+  ja = NULL
 )
 panas_items$affect <- ifelse(startsWith(names(panas_items$en), "PA"),
                              "Positive Affect", "Negative Affect")
 
-# 妥当化済み日本語版PANAS（比較アーム）
+# 日本語材料は妥当化済み尺度（下で定義）を指す（ファイル末尾で代入）
+
+# 日本語版PANAS（妥当化済み尺度・本デモの日本語材料）
 # 出典: 川人潤子・大塚泰正・甲斐田幸佐・中田光紀 (2011). 日本語版
 #   The Positive and Negative Affect Schedule (PANAS) 20項目の信頼性と
 #   妥当性の検討. 広島大学心理学研究, 11, 225–240.
 #   https://doi.org/10.15027/32396
-# 項目文は同論文の Table 2 および付録質問紙（p. 240）より転記。
-# 名前は対応する英語原項目のID（items_data.R の panas_items$en と同順）。
+# 項目文は同論文の Table 2 および付録質問紙（p. 240）より転記（目視照合済み）。
+# 名前は対応する英語原項目のID（panas_items$en と同順）。
 #' Validated Japanese PANAS item wordings (Kawahito et al., 2011)
 #'
 #' @format See the source for structure.
@@ -220,3 +213,7 @@ prestige_anchors <- list(
   C = list(high = c("an admired and esteemed occupation"),
            low  = c("a disrespected occupation that people look down on"))
 )
+
+# 日本語PANASの正規材料 = 妥当化済み尺度
+panas_items$ja <- panas_ja_validated
+stopifnot(identical(names(panas_items$ja), names(panas_items$en)))

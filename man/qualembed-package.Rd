@@ -23,11 +23,11 @@ Useful links:
 
 }
 \author{
-\strong{Maintainer}: FIRSTNAME LASTNAME \email{psycholo.studio@gmail.com}
+\strong{Maintainer}: Toshizumi Muta \email{toshizumi.muta@psycholo.studio}
 
 Authors:
 \itemize{
-  \item FIRSTNAME LASTNAME \email{psycholo.studio@gmail.com}
+  \item Toshizumi Muta \email{toshizumi.muta@psycholo.studio}
 }
 
 }

@@ -4,34 +4,74 @@
 \alias{embed}
 \title{Embed texts with a commercial LLM embedding API}
 \usage{
-embed(texts, provider = "gemini", model = NULL, api_key = NULL)
+embed(
+  texts,
+  provider = "gemini",
+  model = NULL,
+  api_key = NULL,
+  cache = TRUE,
+  refresh = FALSE,
+  cache_dir = file.path("output", "embed_cache"),
+  progress = TRUE,
+  rpm = NULL,
+  dry_run = FALSE,
+  ...
+)
 }
 \arguments{
-\item{texts}{Character vector of texts to embed. A named vector's
-names become the row names of the result.}
+\item{texts}{Character vector of texts to embed. A named vector's names
+become the row names of the result.}
 
 \item{provider}{One of \code{"gemini"}, \code{"voyage"}, \code{"openai"}.}
 
 \item{model}{Model name; \code{NULL} uses the provider default.}
 
 \item{api_key}{API key; \code{NULL} reads the environment variable
-(\code{GEMINI_API_KEY}, \code{VOYAGE_API_KEY}, or \code{OPENAI_API_KEY}),
-typically stored in \code{~/.Renviron}.}
+(\code{GEMINI_API_KEY}, \code{VOYAGE_API_KEY}, \code{OPENAI_API_KEY}),
+normally stored in \code{~/.Renviron}.}
+
+\item{cache}{Reuse and store previously fetched embeddings (default TRUE).}
+
+\item{refresh}{Ignore cached entries and fetch again, overwriting them
+(default FALSE). Useful after a provider updates a model.}
+
+\item{cache_dir}{Directory holding the cache files.}
+
+\item{progress}{Show per-batch progress for large jobs (default TRUE).}
+
+\item{rpm}{Cap requests per minute. Use on free tiers to stay under a rate
+limit instead of relying on retry-after-failure.}
+
+\item{dry_run}{Report how many texts would be fetched and return without
+calling the API.}
+
+\item{...}{Provider-specific options: \code{batch}, \code{dims}
+(output dimensionality), \code{task_type} (Gemini), \code{input_type}
+(Voyage). Options that change the returned vectors are given their own
+cache file automatically.}
 }
 \value{
 A numeric matrix (texts x dimensions) with attributes
-  \code{provider}, \code{model}, and \code{access_date}.
+  \code{provider}, \code{model} and \code{access_date}. With
+  \code{dry_run = TRUE}, an invisible list of counts.
 }
 \description{
 Sends a character vector of texts to Gemini, Voyage AI, or OpenAI and
-returns the embedding matrix (one row per text). Inputs are validated
-before any API call; API-side failures are translated into
-plain-language error messages. Rate limits are retried automatically
-with exponential backoff.
+returns the embedding matrix (one row per text). Results are cached per
+provider and model, so re-running an analysis costs no API calls; only
+texts not seen before are fetched. Inputs are validated before any request,
+API failures are reported in plain language, and partial results are written
+to the cache after every batch, so an interrupted run loses nothing.
 }
 \examples{
 \dontrun{
 emb <- embed(c("physician", "nurse", "athlete"))
 cos_sim_matrix(emb)
+
+# How much would this cost me? (no API calls)
+embed(my_responses, provider = "gemini", dry_run = TRUE)
+
+# Free tier: pace requests instead of hitting the limit
+emb <- embed(my_responses, provider = "gemini", rpm = 60)
 }
 }

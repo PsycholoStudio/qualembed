@@ -2,7 +2,7 @@
 % Please edit documentation in R/data-items.R
 \name{panas_items}
 \alias{panas_items}
-\title{PANAS item texts (EN original; JA author translation) and affect labels}
+\title{PANAS item texts (EN original; JA = validated Japanese scale) and affect labels}
 \format{
 See the source for structure.
 }
@@ -10,5 +10,5 @@ See the source for structure.
 panas_items
 }
 \description{
-PANAS item texts (EN original; JA author translation) and affect labels
+PANAS item texts (EN original; JA = validated Japanese scale) and affect labels
 }

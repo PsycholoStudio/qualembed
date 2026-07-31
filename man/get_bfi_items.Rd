@@ -2,13 +2,13 @@
 % Please edit documentation in R/data-items.R
 \name{get_bfi_items}
 \alias{get_bfi_items}
-\title{Big Five item texts (EN from psych::bfi.dictionary, JA by the first author)}
+\title{Big Five item texts (EN from psych::bfi.dictionary, JA by the author)}
+\format{
+See the source for structure.
+}
 \usage{
 get_bfi_items()
 }
-\value{
-list(en, ja, factor, factor_labels, reversed)
-}
 \description{
-Big Five item texts (EN from psych::bfi.dictionary, JA by the first author)
+Big Five item texts (EN from psych::bfi.dictionary, JA by the author)
 }
