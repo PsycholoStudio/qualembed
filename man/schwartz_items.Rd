@@ -2,7 +2,7 @@
 % Please edit documentation in R/data-items.R
 \name{schwartz_items}
 \alias{schwartz_items}
-\title{Schwartz value descriptions (EN/JA) and the theoretical ring order}
+\title{Schwartz value descriptions (English) and the theoretical ring order}
 \format{
 See the source for structure.
 }
@@ -10,5 +10,5 @@ See the source for structure.
 schwartz_items
 }
 \description{
-Schwartz value descriptions (EN/JA) and the theoretical ring order
+Schwartz value descriptions (English) and the theoretical ring order
 }

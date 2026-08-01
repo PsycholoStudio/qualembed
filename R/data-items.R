@@ -6,7 +6,14 @@
 #   - Big Five 25項目: psych::bfi.dictionary（英語原文をパッケージから取得）
 #   - PANAS 20項目:    Watson, Clark, & Tellegen (1988) 表1
 #   - Schwartz 10価値: Schwartz (1992) の定義文
-#   - 日本語:          PANASは妥当化済み尺度（川人ら, 2011）。BFI・Schwartzは著者訳
+#   - 日本語:          PANAS のみ。妥当化済み尺度（川人ら, 2011）を使用する。
+#
+# 日本語版 BFI・Schwartz について（2026-07-31 撤回）:
+#   以前のバージョンには BFI と Schwartz の日本語訳が含まれていたが、
+#   これらは公刊された妥当化済み翻訳ではなく、執筆中に言語モデルが
+#   生成したものだった。未妥当化の翻訳を測定材料として用いることは
+#   できないため、分析から完全に除去した。日英対比は、公刊された
+#   妥当化済み対訳が存在する PANAS のみが担う。
 #
 # 使い方: source("items_data.R")
 # ============================================================
@@ -14,7 +21,7 @@
 # ── Big Five（psych::bfi の25項目）──────────────────────────
 # 項目文は psych パッケージ内蔵の bfi.dictionary から直接取得する。
 # 戻り値: list(en, ja, factor, factor_labels, reversed)
-#' Big Five item texts (EN from psych::bfi.dictionary, JA by the author)
+#' Big Five item texts (English, from psych::bfi.dictionary)
 #'
 #' @format See the source for structure.
 #' @export
@@ -25,39 +32,9 @@ get_bfi_items <- function() {
   dict <- psych::bfi.dictionary[1:25, ]
   items_en <- setNames(as.character(dict$Item), rownames(dict))
 
-  # 日本語訳（第一著者訳）
-  items_ja <- c(
-    A1 = "他人の気持ちに無関心だ。",
-    A2 = "人の健康状態を気にかける。",
-    A3 = "人を慰める方法を知っている。",
-    A4 = "子供が大好きだ。",
-    A5 = "人を気楽にさせることが得意だ。",
-    C1 = "仕事には厳格さを求める。",
-    C2 = "完璧になるまでやり続ける。",
-    C3 = "計画に従って物事を行う。",
-    C4 = "物事を中途半端にやってしまう。",
-    C5 = "時間を無駄にしてしまう。",
-    E1 = "あまり話さない。",
-    E2 = "他人に近づくのが難しい。",
-    E3 = "人を引き付ける方法を知っている。",
-    E4 = "友達を作りやすい。",
-    E5 = "リーダーシップをとる。",
-    N1 = "怒りやすい。",
-    N2 = "苛立ちやすい。",
-    N3 = "気分の波が激しい。",
-    N4 = "気分が落ち込むことが多い。",
-    N5 = "パニックになりやすい。",
-    O1 = "アイデアが豊富だ。",
-    O2 = "難しい読書素材を避ける。",
-    O3 = "会話をより高い次元に引き上げる。",
-    O4 = "物事について深く考えることに時間を使う。",
-    O5 = "深くテーマを掘り下げることはしない。"
-  )
-  stopifnot(identical(names(items_en), names(items_ja)))
-
   list(
     en            = items_en,
-    ja            = items_ja,
+    ja            = NULL,   # 撤回（ファイル冒頭の注記を参照）
     factor        = substr(names(items_en), 1, 1),
     factor_labels = c(A = "Agreeableness", C = "Conscientiousness",
                       E = "Extraversion",  N = "Neuroticism",
@@ -134,7 +111,7 @@ panas_ja_validated <- c(
 
 # ── Schwartz 基本的価値観 10項目（Schwartz, 1992）───────────
 # ベクトルの並び順 = 理論的円環順序（SD→ST→…→UN→SDと一周）
-#' Schwartz value descriptions (EN/JA) and the theoretical ring order
+#' Schwartz value descriptions (English) and the theoretical ring order
 #'
 #' @format See the source for structure.
 #' @export
@@ -151,18 +128,7 @@ schwartz_items <- list(
     BE = "benevolence: preserving and enhancing the welfare of close others",
     UN = "universalism: understanding and tolerance of all people and nature"
   ),
-  ja = c(
-    SD = "自律性：独立した思考と行動、選択の自由",
-    ST = "刺激：人生における興奮・新奇さ・挑戦",
-    HE = "快楽主義：快楽・享楽・感覚的喜び",
-    AC = "達成：能力の発揮を通じた個人的成功",
-    PO = "権力：社会的地位・威信・人への支配",
-    SE = "安全：社会・人間関係の安全・調和・安定",
-    CO = "同調：社会規範に反する行動の抑制",
-    TR = "伝統：文化的・宗教的慣習への尊重と服従",
-    BE = "博愛：身近な人々の福祉の保全と向上",
-    UN = "普遍主義：すべての人と自然への理解と寛容"
-  ),
+  ja = NULL,   # 撤回（ファイル冒頭の注記を参照）
   ring_order = c("SD", "ST", "HE", "AC", "PO", "SE", "CO", "TR", "BE", "UN")
 )
 
