@@ -12,7 +12,10 @@ commercial text-embedding APIs (Gemini, Voyage AI, OpenAI) and the
 calibration statistics used in the paper: permutation-tested
 within-between contrasts, Ward clustering with adjusted Rand indices,
 Mantel congruence, Procrustes alignment with per-item residuals, and
-theory-anchored semantic projection. Pure R: no Python, no GPU.
+theory-anchored semantic projection. Also segments long documents into
+measurement units and summarises their trajectories. Pure R: no Python,
+no GPU; sentence and word boundaries come from ICU via \pkg{stringi}, so
+English and Japanese are handled by the same call.
 }
 \seealso{
 Useful links:

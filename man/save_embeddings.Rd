@@ -2,8 +2,7 @@
 % Please edit documentation in R/stats-viz.R
 \name{save_embeddings}
 \alias{save_embeddings}
-\title{埋め込み行列をアーカイブ（再現性は API 再取得ではなくこの行列に付随する。
-OSF にはこの output/embeddings/ ごと公開する）}
+\title{Archive embedding matrices for reproduction}
 \usage{
 save_embeddings(
   emb_list,
@@ -13,15 +12,27 @@ save_embeddings(
 )
 }
 \arguments{
-\item{emb_list}{名前付きリスト（各要素は embed() の戻り値の行列）}
+\item{emb_list}{Named list of matrices from \code{embed()} (a bare matrix is
+accepted and named after \code{name}).}
 
-\item{name}{デモ名}
+\item{name}{Analysis name; becomes part of the file name.}
 
-\item{provider}{プロバイダ名}
+\item{provider}{Provider name; becomes part of the file name.}
 
-\item{dir}{出力先ディレクトリ}
+\item{dir}{Output directory.}
+}
+\value{
+The path written, invisibly.
 }
 \description{
-埋め込み行列をアーカイブ（再現性は API 再取得ではなくこの行列に付随する。
-OSF にはこの output/embeddings/ ごと公開する）
+Reproducibility rests on these matrices rather than on re-fetching from the
+API, so the archive has to record what was embedded. It warns in the two
+cases where it would not: a matrix that has lost the \code{texts} attribute
+\code{embed()} attaches (subsetting drops it), and two matrices sharing a
+name (name-based lookup would return only the first, leaving the other
+unreachable). Both failures are silent otherwise, and both make the archive
+impossible to trace back to its inputs.
+}
+\seealso{
+\code{embed()} for the \code{texts} attribute this relies on.
 }

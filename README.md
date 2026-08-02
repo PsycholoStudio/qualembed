@@ -11,7 +11,9 @@ and adds the statistics used in the companion paper, *Embedding qualitative data
 LLM semantic space: A conceptual history, R tutorial, and empirical calibration*.
 
 Nothing is generated and no respondents are simulated. Your participants' own words
-stay the data; the model is a measuring instrument.
+stay the data; the model is a measuring instrument. Every matrix it returns records
+which model produced it, on what date, and from exactly which strings — so an
+archived result can be traced back to its text, and rechecked, months later.
 
 ---
 
@@ -24,9 +26,10 @@ stay the data; the model is a measuring instrument.
 [6 Your own data](#6-using-your-own-survey-data) ·
 [7 Cost and caching](#7-what-it-costs-and-how-the-cache-saves-you-money) ·
 [8 The statistics](#8-the-statistics) ·
-[9 Providers](#9-choosing-a-provider) ·
-[10 Troubleshooting](#10-when-something-goes-wrong) ·
-[11 Participant data](#11-before-you-send-participant-data)
+[9 Long documents](#9-long-documents-interviews-diaries-transcripts) ·
+[10 Providers](#10-choosing-a-provider) ·
+[11 Troubleshooting](#11-when-something-goes-wrong) ·
+[12 Participant data](#12-before-you-send-participant-data)
 
 ---
 
@@ -113,7 +116,7 @@ check_api("gemini")
 
 This embeds one short sentence and reports the model and the number of dimensions. If
 it fails, the message says what to do in plain language rather than showing an HTTP
-status code. Section 10 lists the common cases.
+status code. Section 11 lists the common cases.
 
 ## 5. Your first embedding
 
@@ -223,6 +226,52 @@ embed(texts, cache_dir = "my_cache")    # put the cache elsewhere
 By default the cache goes in `output/embed_cache/`, relative to your working
 directory.
 
+### What the matrix remembers about itself
+
+Every matrix `embed()` returns carries four attributes. Three are provenance;
+the fourth is the one that keeps your archive usable.
+
+```r
+emb <- embed(setNames(d$answer, d$participant_id))
+
+rownames(emb)[1]         #> "P01"                    -- the label you asked for
+attr(emb, "texts")[1]    #> "I felt calm all week."  -- what was actually sent
+attr(emb, "provider")    #> "gemini"
+attr(emb, "model")       #> "gemini-embedding-001"
+attr(emb, "access_date") #> "2026-08-02"
+```
+
+The distinction matters more than it looks. Naming your rows by participant is
+the normal thing to do, and the moment you do it the matrix stops recording
+*what was embedded*. Save it, come back in six months, and the vectors are
+anonymous numbers: you cannot rebuild the cache from them, you cannot check that
+row 12 is the text you think it is, and neither can a reviewer. The `texts`
+attribute keeps that link whatever the row names say.
+
+Two consequences worth knowing:
+
+- **Subsetting drops it.** `emb[1:10, ]` returns a matrix with no `texts` — that
+  is how R attributes work, not a bug. Embed once and subset for analysis, or
+  re-attach with `attr(sub, "texts") <- attr(emb, "texts")[1:10]`.
+- **`save_embeddings()` warns** when you archive a matrix that has lost it, and
+  again if two matrices in one archive share a name (name-based lookup would
+  return only the first).
+
+### Reproducing an analysis without an API key
+
+Because the archives record their own texts, a cache can be rebuilt from them:
+
+```r
+source("seed_cache_from_archive.R")   # archives -> cache
+```
+
+Then every downstream analysis runs from disk with no requests at all. This is
+how the companion paper is reproducible: a reader with the archived matrices can
+recompute every number without a key, without quota, and without the texts
+having drifted. The paper's own repository includes
+`verify_archive_recoverable.R`, which checks that every archived matrix can
+still be traced back to its texts — worth borrowing if you archive your own.
+
 ## 8. The statistics
 
 These are the calibration tests from the paper. Each takes embeddings and a structure
@@ -265,7 +314,246 @@ then test it.
 Built-in materials for trying things out: `get_bfi_items()`, `panas_items`,
 `schwartz_items`, `valence_anchors`, `prestige_anchors`.
 
-## 9. Choosing a provider
+## 9. Long documents: interviews, diaries, transcripts
+
+Everything above embeds one short text per row. An interview transcript is a
+different object. Three facts set the terms.
+
+1. **You may not have a choice about splitting it.** `gemini-embedding-001`
+   accepts 2,048 tokens, OpenAI's models 8,192, Voyage's 32,000. A 3,000-word
+   transcript does not fit in the first at all.
+2. **Even where it fits, one vector for a whole interview is one point.**
+   Everything the interview did — the shift when the topic changed, the return to
+   an earlier theme — is averaged away before you measure anything.
+3. **How you cut it is a decision you own.** Content analysis has treated
+   unitizing as a step separate from coding, with its own reliability, for
+   decades, and there is no established criterion for how large a unit should be.
+   The package will not pick for you.
+
+### Bring your own segmentation
+
+The functions do not care how you split the text. They care that the result is a
+**long data frame with one row per segment**:
+
+| column | required | meaning |
+|---|---|---|
+| `doc_id` | yes | which participant / interview the segment came from |
+| `segid` | no | order within the document; derived from row order if absent |
+| `text` | yes | the segment |
+
+`as_segments()` is the single door in. It accepts several shapes, checks them, and
+adds `n_words`, `n_char`, and a unique `docname` you can use to name the embeddings.
+
+```r
+# (a) a data frame you built any way you like — column names are auto-detected
+seg <- as_segments(my_coded_export)
+
+# (b) a named list: names become doc_id, element order becomes segid
+seg <- as_segments(list(P01 = c("first turn", "second turn"),
+                        P02 = c("...")))
+
+# (c) the convenience splitter, if you want one
+seg <- segment_text(transcripts, by = "words", size = 80, overlap = 20,
+                    ids = participant_ids)
+
+# then, always:
+emb <- embed(setNames(seg$text, seg$docname))
+```
+
+Naming the embeddings with `seg$docname` is not decoration — it lets every
+downstream function match segments to vectors by name instead of trusting row
+order.
+
+`as_segments()` recognises the column names your software already produces
+(`document`, `File`, `participant`, `content`, `Coded`, …). If two columns could
+be the same thing it stops and asks rather than guessing; a silently wrong column
+here would be a silently wrong analysis.
+
+### Cutting by hand
+
+Syntactical units — words, sentences, paragraphs — are the only kind a program
+can find. Krippendorff's other four (physical, categorial, propositional,
+thematic) are defined by what the text *means*, and there is no automating them.
+Most qualitative work needs those, so the normal path into this package is a
+spreadsheet, not `segment_text()`.
+
+There is also no established criterion for how large a unit should be. Graneheim
+and Lundman put the tradeoff well: too broad and one unit carries several
+meanings, too narrow and the account fragments. Bengtsson is blunter — there are
+no rules. Since the package cannot choose for you, **write your rule down before
+you start**, and report it. Segmentation changes every number downstream; leaving
+it unreported is like not reporting how you cleaned your data.
+
+**Minimal procedure.**
+
+1. Write the unit rule in one sentence, and name the kind of unit
+   (syntactical / propositional / thematic) if you can.
+2. One transcript per file, UTF-8.
+3. Optionally rough-cut with `segment_text()`, then export **with a BOM** so the
+   file opens cleanly in Excel: `readr::write_excel_csv()`. `write.csv()` does
+   not write one.
+4. Edit in the spreadsheet, one row per segment. To split, insert a row. To
+   merge, mark a `merge_up` column rather than deleting a row — a deleted row
+   leaves no trace of itself.
+5. Read back with `fileEncoding = "UTF-8-BOM"` (also correct for files without a
+   BOM), apply the merges, and let `as_segments(df, renumber = TRUE)` renumber.
+6. Check segment counts and the `n_char` range before you spend any API calls.
+
+```r
+# rough cut -> spreadsheet
+seg <- segment_text(transcripts, ids = pid)
+seg$merge_up <- ""
+readr::write_excel_csv(seg[, c("doc_id", "segid", "text", "merge_up")],
+                       "to_edit.csv")
+
+# ... edit by hand ...
+
+# back into R
+back <- read.csv("to_edit.csv", fileEncoding = "UTF-8-BOM",
+                 colClasses = "character")
+back$grp <- ave(back$merge_up, back$doc_id,
+                FUN = function(m) cumsum(m != "x"))
+fused <- aggregate(text ~ doc_id + grp, data = back, FUN = paste, collapse = "")
+fused <- fused[order(fused$doc_id, as.integer(fused$grp)), ]
+seg <- as_segments(fused[, c("doc_id", "text")], renumber = TRUE)
+```
+
+**Japanese and English are handled by the same call.** Sentence splitting and
+word counting use ICU boundary analysis (via `stringi`), so `。！？` and `.!?`
+both work and Japanese word counts are morpheme-based rather than
+whitespace-based. Two things to know anyway. A short abbreviation list protects
+`Dr.`, `e.g.` and friends from being read as sentence ends; extend it with
+`abbrev = c(qe_abbreviations(), "Univ")` or switch it off with
+`abbrev = character(0)`. And an ICU "word" in Japanese is a morpheme, so the
+same content yields roughly 1.4× as many words as its English translation —
+`size = 50` is not the same window in the two languages. **If you are comparing
+English and Japanese, cut by sentence**, the one unit that matched across a
+translation pair in our checks. If you are cutting because of a token limit, use
+`by = "chars"`, the one unit whose size means the same thing in both.
+
+**Japanese CSV, four ways to lose data.**
+
+- UTF-8 without a BOM opens as mojibake in Japanese Excel. Save as "CSV UTF-8",
+  or write with `readr::write_excel_csv()`.
+- A Shift_JIS/CP932 file read as UTF-8 does not merely garble — the affected
+  rows vanish, and in a mixed English/Japanese file the loss is *partial* and
+  quiet. `read_segments()` stops when it sees this, but if a segment count falls
+  anywhere else, suspect the encoding first.
+- Saving as Shift_JIS silently drops ①–⑳, ～, —, and emoji.
+- Excel truncates a cell at 32,767 characters (Google Sheets at 50,000) — that
+  is characters, not bytes. A long uncut narrative can exceed it.
+
+Also: keep `doc_id` alphabetic (`P01`, not `01`) or Excel eats the leading zero,
+and de-duplicate CAQDAS exports — Taguette repeats a highlight once per tag, so
+a multi-tagged segment would otherwise be embedded several times.
+
+### Reporting agreement on the cutting
+
+If two people segmented, say so and give a number.
+
+`quallmer::qlm_compare()` (v0.4.0, 2026) computes Krippendorff's alpha for
+unitizing in R — the four variants of Krippendorff et al. (2016). It needs no
+LLM and no API key. `irr`, `icr`, `krippendorffsalpha` and `DescTools` do **not**
+do unitizing; they assume the units are already given. Mathet's gamma exists only
+in Python (`pygamma-agreement`), and Krippendorff's own u-Alpha is a standalone
+Java tool.
+
+**One trap.** `alpha_u_binary` measures agreement on which spans are material
+versus gap. If your segments exhaust the transcript — no gaps, which is the
+normal case here, and automatic in Japanese where nothing separates sentences —
+it is undefined and returns `NA`, *even for two identical segmentations*. It is
+also blind to boundaries between adjacent segments. For exhaustive segmentation
+report either the nominal variants (which need a code column, and where
+`alpha_cu_nominal` separates coding disagreement from boundary disagreement) or
+a plain boundary-set statistic of your own.
+
+The practical minimum, if you do nothing else: state the rule, state how many
+people applied it, and state how disagreements were resolved.
+
+### Reading what is already on your disk
+
+```r
+seg <- read_segments("transcripts/")          # a folder of files
+seg <- read_segments("highlights.csv")        # a CAQDAS export
+```
+
+| You have | What to do |
+|---|---|
+| Coded segments exported from Taguette, QualCoder, NVivo, MAXQDA, ATLAS.ti, Dedoose | Export CSV (or XLSX) — those exports are already one row per segment. `read_segments()` reads them. |
+| `.docx` transcripts | `read_segments()` reads them; each paragraph becomes a segment, which for a transcript is usually one speaker turn. Needs `xml2`. |
+| `.vtt` / `.srt` from Zoom, Teams, or Whisper | Best case — these carry speaker names and timings, both of which are kept. |
+| Plain `.txt` | One file per participant, **speaker turns separated by blank lines**, speaker written as a `Name:` prefix. |
+
+**On the plain-text convention, one warning.** "One segment per line" sounds like
+the obvious format and is a trap. The only tool that actually writes it is
+Whisper's `.txt` output, whose lines are 2–5 second audio chunks — not turns, not
+sentences, not meaning units. Such a file looks correctly structured and is not.
+So `read_segments()` splits `.txt` on **blank lines**, not on every line, and warns
+if it meets a many-line file with no blank lines. If you genuinely want one segment
+per line, ask for it: `unit = "line"`. If you have the `.vtt` from the same
+transcription, use that instead.
+
+### Looking at a trajectory
+
+```r
+plot_trajectory(emb, seg, doc = "P07")                       # the map with arrows
+plot_recurrence(emb, seg, doc = "P07")                       # nothing projected
+plot_arc(emb, seg, y = "forward_flow", null_band = 999)      # the arc over time
+plot_arc(emb, seg, y = "projection", high = H, low = L)      # on your own axis
+
+trajectory_stats(emb, seg)          # path length, step, straightness (full space)
+trajectory_null(emb, seg, 999)      # is the order doing anything?
+trajectory_fidelity(emb, seg)       # can the map be trusted?
+recurrence_stats(emb, seg)          # RR, DET, LAM at a fixed recurrence rate
+```
+
+`plot_trajectory()` is the picture most people picture: each segment placed by the
+first two principal components, joined in the order it was spoken, with arrows.
+**The order is exact — projection cannot distort which segment follows which — so
+"the account went out and came back" is a reading you may take from the arrows.
+Distance is not exact, so "this person travelled further" is not.** That is a
+full-space quantity and `trajectory_stats()` measures it. The subtitle prints how
+much variance the two components hold and how well the on-page distances
+rank-correlate with the measured ones, so you can see each time how far to trust
+the ruler.
+
+Draw one document at a time. On our data a per-document projection holds 69% of
+the variance with a rank correlation of .89 against the full-space distances; put
+every participant on one shared projection and that falls to 12% and .37. The
+function switches to a shared projection when you pass several documents and warns
+when fidelity collapses.
+
+`plot_recurrence()` is a segment × segment cosine matrix for one document. Every
+cell is computed in the **full** space and both axes are just position, so nothing
+is projected at all. Near-diagonal blocks are topic episodes; an off-diagonal block
+is the speaker returning to an earlier theme; a bright vertical stripe is one early
+passage the rest of the interview keeps referring back to.
+
+`plot_arc()` draws one full-space quantity per segment against narrative position:
+a projection onto an axis you defined, the distance from the previous segment, or
+the mean distance from everything said so far. `null_band` shuffles the segment
+order and shades where a bag of the same segments would have fallen.
+
+**Three cautions the package enforces rather than merely documents.**
+
+- Raw **path length is not a measure of how far the account travelled**. In our
+  own data it correlates .93–.96 with the number of segments and only .55–.64 with
+  word count — it mostly counts how many times you cut. Use `step_mean`,
+  `straightness`, or the arc; report `path_length` only beside the segment count.
+- **A distance measured on a two-dimensional picture is a property of the
+  picture.** `trajectory_length()`, which did exactly that, is deprecated and
+  warns; `plot_trajectory()` prints its own fidelity so you are never guessing.
+- **The same summary number is compatible with different trajectories.** Report the
+  scalar and the plot together; neither alone is the finding.
+
+None of these statistics are new — segment-embed-trajectory has been done at scale
+in marketing and in clinical speech research, and psychology has its own
+chained-utterance measure with a published dispute about what it means. What this
+package adds is that they run in R, on commercial APIs, with a permutation null
+attached. Their validity on interview-length material has not been established by
+anyone, including us.
+
+## 10. Choosing a provider
 
 ```r
 embed(texts, provider = "gemini")   # default
@@ -298,7 +586,7 @@ with different dimensionalities. Compare *relations* between them —
 Models are versioned products and get retired. If a result matters, archive the matrix
 with `save_embeddings()` rather than relying on being able to re-fetch it.
 
-## 10. When something goes wrong
+## 11. When something goes wrong
 
 `embed()` translates provider errors into plain language. The common ones:
 
@@ -314,7 +602,7 @@ with `save_embeddings()` rather than relying on being able to re-fetch it.
 
 If a long run stops partway, run it again. Everything already fetched is cached.
 
-## 11. Before you send participant data
+## 12. Before you send participant data
 
 An API call sends your text to a third party. Four rules follow; the paper's Method
 sets them out more fully.

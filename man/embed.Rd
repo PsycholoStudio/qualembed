@@ -51,9 +51,10 @@ calling the API.}
 cache file automatically.}
 }
 \value{
-A numeric matrix (texts x dimensions) with attributes
-  \code{provider}, \code{model} and \code{access_date}. With
-  \code{dry_run = TRUE}, an invisible list of counts.
+A numeric matrix (texts x dimensions) with four attributes:
+  \code{provider}, \code{model}, \code{access_date}, and \code{texts} ---
+  the exact strings that were sent to the API, in row order.
+  With \code{dry_run = TRUE}, an invisible list of counts.
 }
 \description{
 Sends a character vector of texts to Gemini, Voyage AI, or OpenAI and
@@ -63,6 +64,30 @@ texts not seen before are fetched. Inputs are validated before any request,
 API failures are reported in plain language, and partial results are written
 to the cache after every batch, so an interrupted run loses nothing.
 }
+\section{Why the matrix carries its own texts}{
+
+Row names are whatever you asked for. If you call
+\code{embed(setNames(answers, participant_id))} the row names become the
+participant IDs, which is usually what you want for analysis --- but it means
+the matrix no longer records \emph{what was embedded}. Archive such a matrix
+and the texts are gone, so the cache cannot be rebuilt from it and a reader
+cannot verify what the numbers came from. The \code{texts} attribute keeps
+that link no matter what the row names say:
+
+\preformatted{
+emb <- embed(setNames(d$answer, d$id))
+rownames(emb)[1]        # "P01"  -- your label
+attr(emb, "texts")[1]   # "I felt calm all week." -- what was sent
+attributes(emb)[c("provider", "model", "access_date")]
+}
+
+\code{save_embeddings()} warns if you archive a matrix without it, and
+\code{seed_cache_from_archive.R} uses it to rebuild a cache from archived
+matrices alone --- so a reader who has your archive never needs an API key
+to reproduce the analysis. Subsetting a matrix drops the attribute (this is
+how R works); embed once and subset afterwards, or re-attach it yourself.
+}
+
 \examples{
 \dontrun{
 emb <- embed(c("physician", "nurse", "athlete"))

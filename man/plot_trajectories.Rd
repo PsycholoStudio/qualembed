@@ -2,7 +2,7 @@
 % Please edit documentation in R/stats-viz.R
 \name{plot_trajectories}
 \alias{plot_trajectories}
-\title{縦断軌跡の可視化}
+\title{縦断軌跡の可視化（非推奨）}
 \usage{
 plot_trajectories(
   df,
@@ -18,5 +18,10 @@ plot_trajectories(
 \item{title}{図のタイトル}
 }
 \description{
-縦断軌跡の可視化
+plot_trajectory() に置き換えられた。新関数は埋め込み行列とセグメント表を
+直接受け取り、1段ごとの矢印を描き、その射影が距離をどれだけ保っているかを
+図に印字する。本関数は v0.2.0 との後方互換のためだけに残す。
+}
+\seealso{
+[plot_trajectory()]
 }

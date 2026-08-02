@@ -120,7 +120,10 @@
 #               ベクトルを変えるオプションはキャッシュを自動的に分離する
 #   cache_dir : キャッシュRDSの保存先
 #   戻り値    : 行列 (length(texts) × 次元数)、行名=texts
-#               再現性のため provider / model / access_date を属性に記録
+#               再現性のため provider / model / access_date / texts を属性に記録
+#               texts は「APIに送った文字列そのもの」。行名は呼び出し側の
+#               都合で参加者IDに置き換わりうるので、本文は別に保持する。
+#               attr(emb, "texts") で確認できる。
 #
 #' Embed texts with a commercial LLM embedding API
 #'
@@ -151,9 +154,32 @@
 #'   (output dimensionality), \code{task_type} (Gemini), \code{input_type}
 #'   (Voyage). Options that change the returned vectors are given their own
 #'   cache file automatically.
-#' @return A numeric matrix (texts x dimensions) with attributes
-#'   \code{provider}, \code{model} and \code{access_date}. With
-#'   \code{dry_run = TRUE}, an invisible list of counts.
+#' @return A numeric matrix (texts x dimensions) with four attributes:
+#'   \code{provider}, \code{model}, \code{access_date}, and \code{texts} ---
+#'   the exact strings that were sent to the API, in row order.
+#'   With \code{dry_run = TRUE}, an invisible list of counts.
+#'
+#' @section Why the matrix carries its own texts:
+#' Row names are whatever you asked for. If you call
+#' \code{embed(setNames(answers, participant_id))} the row names become the
+#' participant IDs, which is usually what you want for analysis --- but it means
+#' the matrix no longer records \emph{what was embedded}. Archive such a matrix
+#' and the texts are gone, so the cache cannot be rebuilt from it and a reader
+#' cannot verify what the numbers came from. The \code{texts} attribute keeps
+#' that link no matter what the row names say:
+#'
+#' \preformatted{
+#' emb <- embed(setNames(d$answer, d$id))
+#' rownames(emb)[1]        # "P01"  -- your label
+#' attr(emb, "texts")[1]   # "I felt calm all week." -- what was sent
+#' attributes(emb)[c("provider", "model", "access_date")]
+#' }
+#'
+#' \code{save_embeddings()} warns if you archive a matrix without it, and
+#' \code{seed_cache_from_archive.R} uses it to rebuild a cache from archived
+#' matrices alone --- so a reader who has your archive never needs an API key
+#' to reproduce the analysis. Subsetting a matrix drops the attribute (this is
+#' how R works); embed once and subset afterwards, or re-attach it yourself.
 #' @examples
 #' \dontrun{
 #' emb <- embed(c("physician", "nurse", "athlete"))
@@ -255,11 +281,23 @@ embed <- function(texts,
       openai = .embed_openai,
       voyage = .embed_voyage
     )
-    # バッチごとにキャッシュへ書き出すコールバック（中断耐性）
+    # バッチごとにキャッシュへ書き出すコールバック（中断耐性）。
+    # 一時ファイルに書いてから改名する。saveRDS を直接当てると、書き込みの
+    # 最中に中断された場合にキャッシュが壊れ、以後 readRDS が失敗する。
+    # 改名は同一ファイルシステム上で原子的なので、中断しても古い健全な
+    # キャッシュが残る。
     on_chunk <- function(texts_chunk, mat_chunk) {
       for (i in seq_along(texts_chunk))
         cached[[texts_chunk[i]]] <<- mat_chunk[i, ]
-      if (!is.null(cache_file)) saveRDS(cached, cache_file)
+      if (!is.null(cache_file)) {
+        tmp <- paste0(cache_file, ".tmp", Sys.getpid())
+        saveRDS(cached, tmp)
+        if (!file.rename(tmp, cache_file)) {
+          unlink(tmp)
+          warning("Could not replace the embedding cache at ", cache_file,
+                  "; this batch was fetched but not cached.", call. = FALSE)
+        }
+      }
     }
     new_mat <- fn(to_fetch, model = model, api_key = api_key,
                   progress = progress, rpm = rpm, on_chunk = on_chunk, ...)
@@ -296,6 +334,11 @@ embed <- function(texts,
             "or names). Name-based indexing like mat[\"text\", ] will ",
             "silently pick the first match; supply unique names(texts) ",
             "if you need name-based access.", call. = FALSE)
+  # API に送った本文そのものを常に持たせる。行名は呼び出し側の都合で
+  # 参加者IDなどに置き換わることがあり、そうなるとその行列からは
+  # 「何を埋め込んだか」が二度と復元できない。属性で保つのは1行で済み、
+  # アーカイブからキャッシュを再構成できる状態を恒久的に保証する。
+  attr(mat, "texts")       <- texts_clean
   attr(mat, "provider")    <- provider
   attr(mat, "model")       <- model
   attr(mat, "access_date") <- as.character(Sys.Date())

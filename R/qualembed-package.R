@@ -6,7 +6,10 @@
 #' calibration statistics used in the paper: permutation-tested
 #' within-between contrasts, Ward clustering with adjusted Rand indices,
 #' Mantel congruence, Procrustes alignment with per-item residuals, and
-#' theory-anchored semantic projection. Pure R: no Python, no GPU.
+#' theory-anchored semantic projection. Also segments long documents into
+#' measurement units and summarises their trajectories. Pure R: no Python,
+#' no GPU; sentence and word boundaries come from ICU via \pkg{stringi}, so
+#' English and Japanese are handled by the same call.
 #'
 #' @import ggplot2
 #' @import httr2
@@ -14,7 +17,9 @@
 #' @importFrom dplyr arrange group_by summarise bind_rows rename n .data
 #' @importFrom vegan mantel procrustes protest
 #' @importFrom stats prcomp dist hclust cutree cor residuals as.dist setNames
-#' @importFrom utils head
+#' @importFrom stringi stri_split_boundaries stri_locate_all_boundaries stri_count_boundaries stri_opts_brkiter
+#' @importFrom stats sd median quantile ave
+#' @importFrom utils head read.csv unzip
 #' @keywords internal
 "_PACKAGE"
 

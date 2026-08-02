@@ -2,7 +2,7 @@
 % Please edit documentation in R/stats-viz.R
 \name{trajectory_length}
 \alias{trajectory_length}
-\title{個人の意味空間上の軌跡を計算}
+\title{2次元投影上の軌跡長（非推奨）}
 \usage{
 trajectory_length(df, person_col = "person", time_col = "time")
 }
@@ -14,8 +14,13 @@ trajectory_length(df, person_col = "person", time_col = "time")
 \item{time_col}{時点列名}
 }
 \value{
-個人ごとの軌跡長（total_dist）を含むデータフレーム
+個人ごとの2次元経路長（total_dist_2d）
 }
 \description{
-個人の意味空間上の軌跡を計算
+**PC1・PC2 の平面上で距離を測る。すなわち埋め込み空間ではなく「図」を
+測っている。** 2次元への射影は距離構造を保存しない (Chari & Pachter,
+2023)。距離には trajectory_stats() を使うこと。
+}
+\seealso{
+[trajectory_stats()]
 }
