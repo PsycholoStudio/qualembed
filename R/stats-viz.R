@@ -70,6 +70,76 @@ cos_sim_matrix <- function(mat) {
   (mat %*% t(mat)) / (norms %o% norms)
 }
 
+#' 中心化してからのコサイン類似度行列
+#'
+#' 埋め込みは原点のまわりに散らばっておらず、どの方向にも共通成分が乗って
+#' いる。そのため生のコサインは実質的に負にならない（本研究の項目文では
+#' 25項目300ペア・135項目9,045ペアのいずれも負がゼロ）。対立を問う質問
+#' ——逆転項目、反対の構成概念、賛否——では、これは「対立が見つからない」
+#' のではなく「対立を表現できる座標を使っていない」ことを意味する。
+#'
+#' 列平均を抜いてから角度を測ると負が戻る（本研究では 58〜74%）。ただし
+#' 二つの代償がある。第一に、中心化後の類似度は**項目プール依存**になる。
+#' 項目を一つ足し引きすればすべてのペアの値が動くので、生のコサインのように
+#' 「そのペアだけの性質」としては読めない。第二に、戻るのは符号の情報だけで、
+#' 分割の復元は改善しない（付録の表を参照。生 .373 / 中心化 .374）。
+#'
+#' 重要: これは符号の「修復」ではない。中心化するとベクトルの総和が 0 に
+#' なるため、中心化グラム行列の全要素和は恒等的に 0 であり、**対立が
+#' あろうがなかろうが負の値は必ず生じる**。検出したい現象を演算が作って
+#' しまう以上、負が出たこと自体は何の証拠にもならない。問えるのは「負が
+#' 正しい対に落ちるか」だけで、本研究の実測ではその利得は「全部正と
+#' 答える」規則を 1〜9 ポイント上回るにとどまる。
+#'
+#' したがって確証的な分析には使わない。`cos_sim_matrix()` を既定とし、
+#' 本関数は「読者が思いつく手を実際に試して落ちることを示す」ために置く。
+#'
+#' @param mat embedding行列 (n × d)。`embed()` の出力。
+#' @return n × n の類似度行列。生のものと取り違えないよう、属性
+#'   `centering = "mean"` を付す。
+#' @seealso [cos_sim_matrix()]（中心化なし）、[double_center()]（類似度行列
+#'   そのものを二重中心化する別の操作）
+#' @export
+centered_sim_matrix <- function(mat) {
+  if (!is.matrix(mat) || !is.numeric(mat))
+    stop("centered_sim_matrix(): expected a numeric matrix with one row per ",
+         "text (the output of embed()); got ", class(mat)[1], ".",
+         call. = FALSE)
+  # n = 2 では中心化した二行が必ず正反対を向き、類似度が定義上 -1 に
+  # 固定される。数値は返るが意味がないので、ここで止める。
+  if (nrow(mat) < 3)
+    stop("centered_sim_matrix(): need at least three texts. With two, ",
+         "centering forces the similarity to -1 by construction.",
+         call. = FALSE)
+  centered <- sweep(mat, 2, colMeans(mat), "-")
+  flat <- which(sqrt(rowSums(centered^2)) == 0)
+  if (length(flat) > 0)
+    stop("centered_sim_matrix(): row(s) ",
+         paste(head(flat, 5), collapse = ", "),
+         " sit exactly at the pool mean, so their centered direction is ",
+         "undefined. This usually means duplicate texts.", call. = FALSE)
+  sim <- cos_sim_matrix(centered)
+  attr(sim, "centering") <- "mean"
+  sim
+}
+
+#' 類似度行列の二重中心化
+#'
+#' 行平均・列平均・全体平均を抜く。`centered_sim_matrix()` が**埋め込み**を
+#' 中心化するのに対し、こちらは出来上がった**類似度行列**を中心化する別の
+#' 操作で、ハブ構造（特定の項目が誰とでも似ている）の統制に使う。
+#'
+#' @param sim_mat n × n の類似度行列
+#' @return 同じ大きさの二重中心化行列
+#' @export
+double_center <- function(sim_mat) {
+  if (!is.matrix(sim_mat) || nrow(sim_mat) != ncol(sim_mat))
+    stop("double_center(): expected a square similarity matrix.",
+         call. = FALSE)
+  sim_mat - rowMeans(sim_mat)[row(sim_mat)] -
+    colMeans(sim_mat)[col(sim_mat)] + mean(sim_mat)
+}
+
 #' ペアワイズユークリッド距離行列
 #' @param mat embedding行列 (n × d)
 #' @return dist オブジェクト
@@ -480,8 +550,8 @@ save_embeddings <- function(emb_list, name, provider,
   # 唯一の確実な手がかりになる。無いまま保存すると、その行列からは
   # 何を埋め込んだのか二度と分からず、キャッシュも作り直せない。
   no_texts <- vapply(emb_list, function(m)
-    is.matrix(m) && (is.null(attr(m, "texts")) ||
-                     length(attr(m, "texts")) != nrow(m)), TRUE)
+    is.matrix(m) && (is.null(attr(m, "texts", exact = TRUE)) ||
+                     length(attr(m, "texts", exact = TRUE)) != nrow(m)), TRUE)
   if (any(no_texts))
     warning("save_embeddings(): ", sum(no_texts), " of ", length(emb_list),
             " matrices (", paste(names(emb_list)[no_texts], collapse = ", "),

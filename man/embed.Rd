@@ -46,9 +46,20 @@ limit instead of relying on retry-after-failure.}
 calling the API.}
 
 \item{...}{Provider-specific options: \code{batch}, \code{dims}
-(output dimensionality), \code{task_type} (Gemini), \code{input_type}
-(Voyage). Options that change the returned vectors are given their own
-cache file automatically.}
+  (output dimensionality), \code{task_type} (Gemini), \code{input_type}
+  (Voyage). Options that change the returned vectors are given their own
+  cache file automatically.
+
+  One default is not neutral and is worth knowing about. For Voyage,
+  \code{input_type} defaults to \code{"document"}, which makes the endpoint
+  prepend a retrieval instruction to each text before encoding it; Gemini's
+  \code{task_type} and OpenAI's \code{dimensions} are left unset, so those
+  two encode the string as given. The instruction is not cosmetic: on the
+  Big Five items the two Voyage spaces agree with each other at Mantel
+  \eqn{r_M = .86}, and clustering agreement with the theoretical factors
+  rises from .26 to .36 when it is removed. Pass \code{input_type = NULL}
+  to send no instruction, and state whichever you used when you report a
+  cross-provider comparison.}
 }
 \value{
 A numeric matrix (texts x dimensions) with four attributes:

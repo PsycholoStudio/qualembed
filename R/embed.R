@@ -154,6 +154,17 @@
 #'   (output dimensionality), \code{task_type} (Gemini), \code{input_type}
 #'   (Voyage). Options that change the returned vectors are given their own
 #'   cache file automatically.
+#'
+#'   One default is not neutral and is worth knowing about. For Voyage,
+#'   \code{input_type} defaults to \code{"document"}, which makes the endpoint
+#'   prepend a retrieval instruction to each text before encoding it; Gemini's
+#'   \code{task_type} and OpenAI's \code{dimensions} are left unset, so those
+#'   two encode the string as given. The instruction is not cosmetic: on the
+#'   Big Five items the two Voyage spaces agree with each other at Mantel
+#'   \eqn{r_M = .86}, and clustering agreement with the theoretical factors
+#'   rises from .26 to .36 when it is removed. Pass \code{input_type = NULL}
+#'   to send no instruction, and state whichever you used when you report a
+#'   cross-provider comparison.
 #' @return A numeric matrix (texts x dimensions) with four attributes:
 #'   \code{provider}, \code{model}, \code{access_date}, and \code{texts} ---
 #'   the exact strings that were sent to the API, in row order.
@@ -231,11 +242,28 @@ embed <- function(texts,
   text_names  <- names(texts)
   texts_clean <- as.character(unname(texts))
 
+  fn <- switch(provider,
+    gemini = .embed_gemini,
+    openai = .embed_openai,
+    voyage = .embed_voyage
+  )
+
+  # ── 何を送ったかの記録 ────────────────────────────────────
+  # 送ったオプションだけでなく、既定のまま送られたものも記録する。
+  # 既定はクライアント間で異なり予告なく変わるので、「指定しなかった」
+  # ことも仕様の一部であり、後から復元できない。
+  .dots <- list(...)
+  .opt_names <- intersect(names(formals(fn)), c("dims", "task_type", "input_type"))
+  req_opts <- lapply(.opt_names, function(k)
+    if (k %in% names(.dots)) .dots[[k]] else eval(formals(fn)[[k]]))
+  names(req_opts) <- .opt_names
+
   # ── キャッシュ: 埋め込みは決定的なので、同一テキストの再送信は無駄 ──
   # provider×model ごとのRDS（テキスト→ベクトルの名前付きリスト）に保存し、
   # 未取得のテキストだけをAPIに送る。cache = FALSE で無効化できる。
   cache_file <- NULL
   cached <- list()
+  fetch_dates <- character(0)
   if (isTRUE(cache)) {
     if (!dir.exists(cache_dir)) dir.create(cache_dir, recursive = TRUE)
     # オプションがベクトルを変える場合はキャッシュを分ける
@@ -244,13 +272,37 @@ embed <- function(texts,
     opts <- opts[intersect(names(opts),
                            c("dims", "task_type", "input_type"))]
     sig <- if (length(opts) == 0) "" else paste0("_", paste(
-      vapply(names(opts), function(k)
-        paste0(substr(k, 1, 3), gsub("[^A-Za-z0-9]", "", as.character(opts[[k]]))),
-        character(1)), collapse = "-"))
+      vapply(names(opts), function(k) {
+        # 明示的に NULL を渡した場合（＝そのパラメータを送らない条件）も
+        # 既定と別のキャッシュに分ける。空文字だと "指定なし" と区別が
+        # つかず、条件の違う二つのベクトルが同じ鍵に混ざる。
+        v <- if (is.null(opts[[k]])) "none"
+             else gsub("[^A-Za-z0-9]", "", as.character(opts[[k]]))
+        paste0(substr(k, 1, 3), v)
+      }, character(1)), collapse = "-"))
     cache_file <- file.path(
       cache_dir, paste0(provider, "_",
                         gsub("[^A-Za-z0-9._-]", "_", model), sig, ".rds"))
     if (file.exists(cache_file)) cached <- readRDS(cache_file)
+    # 取得日はキャッシュの属性として持つ（値の構造は変えない）。既存の
+    # キャッシュにはこの属性が無く、その分の取得日は不明のまま NA になる。
+    # 値に日付を抱かせると全キャッシュが無効になり取り直しに実費がかかる。
+    fetch_dates <- attr(cached, "fetch_date", exact = TRUE)
+    if (is.null(fetch_dates)) fetch_dates <- character(0)
+    # 初回だけ、キャッシュがどこに何を書くかを知らせる。参加者のテキストを
+    # 扱う利用者が「平文の二つ目の写しが黙って作られた」状態にならないよう、
+    # 論文の data-ethics 規則をライブラリ側からも一度は言う。
+    if (!isTRUE(getOption("qualembed.cache_notice_shown"))) {
+      message("qualembed: caching embeddings to ", normalizePath(cache_dir,
+              mustWork = FALSE), "\n",
+              "  The cache stores your texts verbatim and unencrypted. ",
+              "For participant data,\n",
+              "  pass cache = FALSE or set cache_dir to a controlled-access ",
+              "location.\n",
+              "  (Shown once per session; silence with ",
+              "options(qualembed.cache_notice_shown = TRUE).)")
+      options(qualembed.cache_notice_shown = TRUE)
+    }
   }
   uniq     <- unique(texts_clean)
   # refresh = TRUE なら既存のキャッシュを無視して取り直す（結果は上書き保存）。
@@ -276,22 +328,21 @@ embed <- function(texts,
       message(sprintf("embed[%s/%s]: fetching %d new texts (%d already cached)",
                       provider, model, length(to_fetch),
                       length(texts_clean) - length(to_fetch)))
-    fn <- switch(provider,
-      gemini = .embed_gemini,
-      openai = .embed_openai,
-      voyage = .embed_voyage
-    )
     # バッチごとにキャッシュへ書き出すコールバック（中断耐性）。
     # 一時ファイルに書いてから改名する。saveRDS を直接当てると、書き込みの
     # 最中に中断された場合にキャッシュが壊れ、以後 readRDS が失敗する。
     # 改名は同一ファイルシステム上で原子的なので、中断しても古い健全な
     # キャッシュが残る。
+    today <- as.character(Sys.Date())
     on_chunk <- function(texts_chunk, mat_chunk) {
       for (i in seq_along(texts_chunk))
         cached[[texts_chunk[i]]] <<- mat_chunk[i, ]
+      fetch_dates[texts_chunk] <<- today
       if (!is.null(cache_file)) {
+        to_save <- cached
+        attr(to_save, "fetch_date") <- fetch_dates
         tmp <- paste0(cache_file, ".tmp", Sys.getpid())
-        saveRDS(cached, tmp)
+        saveRDS(to_save, tmp)
         if (!file.rename(tmp, cache_file)) {
           unlink(tmp)
           warning("Could not replace the embedding cache at ", cache_file,
@@ -342,7 +393,118 @@ embed <- function(texts,
   attr(mat, "provider")    <- provider
   attr(mat, "model")       <- model
   attr(mat, "access_date") <- as.character(Sys.Date())
+
+  # ── 出所の記録 ────────────────────────────────────────────
+  # ここに載せるものは、この行列を使った分析を報告するときに
+  # method 節へ書き写すべき項目そのものにしてある。embedding_info() が
+  # それを読み出す。access_date はこの行列を組んだ日であって API を
+  # 叩いた日ではない——全件キャッシュから来た場合は誰にも触れていない
+  # ので、取得日は別に持つ。
+  attr(mat, "dim_embedding")   <- ncol(mat)
+  attr(mat, "request_options") <- req_opts
+  attr(mat, "n_fetched")       <- length(to_fetch)
+  attr(mat, "n_from_cache")    <- length(texts_clean) - length(to_fetch)
+  known <- if (length(fetch_dates))
+    stats::na.omit(unname(fetch_dates[texts_clean])) else character(0)
+  attr(mat, "fetch_dates") <-
+    if (length(known)) range(known) else NA_character_
+  attr(mat, "n_date_unknown") <- length(texts_clean) - length(known)
+  attr(mat, "software") <- paste0("qualembed ", .qualembed_version(),
+                                  "; ", R.version.string)
   mat
+}
+
+
+# パッケージとして読み込まれていれば版番号、script/ から source した
+# 場合はそう分かる文字列を返す。アーカイブに「どの実装で作ったか」を
+# 残すためだけの補助。
+.qualembed_version <- function() {
+  # インストール済みの版番号を無条件に名乗ってはいけない。script/ から
+  # source して走らせている場合、走ったのはそのファイルであってパッケージ
+  # ではなく、両者は同期しているとは限らない。実際にどちらで動いているかで
+  # 分ける。
+  ns <- environmentName(environment(.qualembed_version))
+  if (identical(ns, "qualembed"))
+    as.character(utils::packageVersion("qualembed"))
+  else "(sourced from script/, not the installed package)"
+}
+
+
+#' Report the provenance of an embedding matrix
+#'
+#' Prints what a method section needs in order to identify the measurement:
+#' the provider and model, the embedding dimensionality, every request option
+#' including the ones left at their defaults, when the vectors were fetched,
+#' and the software that fetched them. Returns the same fields as a one-row
+#' data frame, invisibly, so they can be written to a results file.
+#'
+#' Commercial embedding models are versioned products that are retired on the
+#' provider's schedule. A matrix that records only its numbers cannot be
+#' matched to the instrument that produced it once that instrument is gone,
+#' which is why \code{embed()} attaches these attributes and why archived
+#' matrices carry them.
+#'
+#' @param x A matrix returned by \code{embed()}, or a list of such matrices
+#'   (as \code{save_embeddings()} archives them).
+#' @return A one-row data frame per matrix, invisibly.
+#' @export
+#' @examples
+#' \dontrun{
+#' emb <- embed(c("first text", "second text"), provider = "openai")
+#' embedding_info(emb)
+#' embedding_info(readRDS("output/embeddings/demo1_bfi_openai.rds"))
+#' }
+embedding_info <- function(x) {
+  if (is.list(x) && !is.matrix(x)) {
+    out <- do.call(rbind, lapply(seq_along(x), function(i) {
+      cat(if (i > 1) "\n" else "", "── ", names(x)[i] %||% i, "\n", sep = "")
+      embedding_info(x[[i]])
+    }))
+    return(invisible(out))
+  }
+  g <- function(a, default = NA) {
+    v <- attr(x, a, exact = TRUE)
+    if (is.null(v)) default else v
+  }
+  # 属性が「無い」ことと「空である」ことを取り違えない。古い行列は
+  # 記録していないだけで、オプションを受け付けないわけではない。
+  opts <- attr(x, "request_options", exact = TRUE)
+  opt_str <- if (is.null(opts)) "not recorded (matrix predates this field)" else
+    if (!length(opts)) "none accepted by this provider" else
+    paste(vapply(names(opts), function(k) sprintf(
+      "%s = %s", k,
+      if (is.null(opts[[k]])) "unset" else paste0("\"", opts[[k]], "\"")),
+      character(1)), collapse = ", ")
+  fd <- g("fetch_dates")
+  fd_str <- if (all(is.na(fd))) "unknown (cached before dates were recorded)" else
+    if (length(unique(fd)) == 1) fd[1] else paste(fd, collapse = " to ")
+  unknown <- g("n_date_unknown", 0)
+
+  cat(sprintf("Provider        : %s\n", g("provider")))
+  cat(sprintf("Model           : %s\n", g("model")))
+  cat(sprintf("Dimensions      : %s\n", g("dim_embedding", ncol(x))))
+  cat(sprintf("Texts           : %d\n", nrow(x)))
+  cat(sprintf("Request options : %s\n", opt_str))
+  # 全件不明のときは「不明」だけでよい。件数を足すと同じことを二度言う。
+  cat(sprintf("Fetched         : %s%s\n", fd_str,
+              if (!is.na(unknown) && unknown > 0 && unknown < nrow(x))
+                sprintf(" (%d of %d texts undated)", unknown, nrow(x)) else ""))
+  nf <- attr(x, "n_fetched", exact = TRUE)
+  cat(sprintf("Assembled       : %s%s\n", g("access_date"),
+              if (is.null(nf)) "" else
+                sprintf(" (%d fetched, %d from cache)", nf,
+                        attr(x, "n_from_cache", exact = TRUE))))
+  cat(sprintf("Software        : %s\n", g("software", "not recorded")))
+  if (is.null(attr(x, "texts", exact = TRUE)))
+    cat("Note            : no `texts` attribute -- what was embedded",
+        "cannot be recovered from this matrix.\n")
+
+  invisible(data.frame(
+    provider = g("provider"), model = g("model"),
+    dims = g("dim_embedding", ncol(x)), n_texts = nrow(x),
+    request_options = opt_str, fetched = fd_str,
+    assembled = g("access_date"), software = g("software"),
+    stringsAsFactors = FALSE))
 }
 
 
@@ -483,8 +645,11 @@ embed <- function(texts,
   rows <- vector("list", length(chunks))
 
   for (i in seq_along(chunks)) {
-    body <- list(input = as.list(unname(chunks[[i]])), model = model,
-                 input_type = input_type)
+    body <- list(input = as.list(unname(chunks[[i]])), model = model)
+    # input_type は省略可能。NULL のときにキーごと落とす必要がある——
+    # list(input_type = NULL) は JSON では {} になり、指示文なしではなく
+    # 不正値として送られてしまう。
+    if (!is.null(input_type)) body$input_type <- input_type
     if (!is.null(dims)) body$output_dimension <- dims
     req <- request("https://api.voyageai.com/v1/embeddings") |>
       req_auth_bearer_token(api_key) |>

@@ -248,6 +248,42 @@ anonymous numbers: you cannot rebuild the cache from them, you cannot check that
 row 12 is the text you think it is, and neither can a reviewer. The `texts`
 attribute keeps that link whatever the row names say.
 
+### What to write in your method section
+
+`embedding_info()` prints exactly the fields a method section needs, from the
+matrix or from an archived file, so the record is read off the data rather than
+reconstructed from memory:
+
+```r
+embedding_info(emb)
+#> Provider        : gemini
+#> Model           : gemini-embedding-001
+#> Dimensions      : 3072
+#> Texts           : 240
+#> Request options : dims = unset, task_type = unset
+#> Fetched         : 2026-07-14 to 2026-08-05
+#> Assembled       : 2026-08-05 (12 fetched, 228 from cache)
+#> Software        : qualembed 0.4.0; R version 4.5.0 (2025-04-11)
+
+embedding_info(readRDS("output/embeddings/study1_gemini.rds"))  # archives too
+```
+
+It returns the same fields as a one-row data frame, invisibly, so they can be
+written straight into a results file.
+
+Two of those lines are easy to get wrong by hand. *Request options* lists the
+settings that change the returned vector **including the ones you left unset**,
+because defaults differ between clients and change without notice, so "I did not
+set it" is part of the specification and cannot be recovered later. *Fetched* is
+when the vectors were actually retrieved from the API, which is not the same as
+when you built the matrix: a fully cached run touches no endpoint at all. Dates
+are recorded per text in the cache from v0.4.0 on; anything cached before that
+reports as undated rather than guessing.
+
+Commercial embedding models are versioned products that get retired on the
+provider's schedule. A matrix that records only its numbers cannot be matched to
+the instrument that produced it once that instrument is gone.
+
 Two consequences worth knowing:
 
 - **Subsetting drops it.** `emb[1:10, ]` returns a matrix with no `texts` — that
@@ -573,11 +609,21 @@ Override the model, or pass provider-specific options, through `...`:
 embed(x, provider = "openai", model = "text-embedding-3-large")
 embed(x, provider = "openai", dims = 512)             # shorter vectors
 embed(x, provider = "gemini", task_type = "SEMANTIC_SIMILARITY")
-embed(x, provider = "voyage", input_type = "document")
+embed(x, provider = "voyage", input_type = NULL)       # no instruction
 ```
 
 Options that change the returned vectors get their own cache file, so results from
 different settings never mix.
+
+**One default is not neutral.** For Voyage, `input_type` defaults to `"document"`,
+which makes the endpoint prepend a retrieval instruction to the text before encoding
+it. Gemini's `task_type` and OpenAI's `dimensions` are left unset, so those two encode
+the string as given. The instruction is not cosmetic: on the Big Five items the two
+Voyage spaces agree with each other at Mantel *r*~M~ = .86, and clustering agreement
+with the theoretical factors rises from .26 to .36 when it is removed. Pass
+`input_type = NULL` to send none, and say which you used whenever you report a
+comparison across providers — otherwise the comparison is of provider *and*
+configuration.
 
 **Vectors from different providers are not comparable.** They live in different spaces
 with different dimensionalities. Compare *relations* between them —
