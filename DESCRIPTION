@@ -1,7 +1,7 @@
 Package: qualembed
 Type: Package
 Title: Embedding-Based Semantic Measurement and Calibration for Survey and Qualitative Text
-Version: 0.4.0
+Version: 0.4.1
 Authors@R: person("Toshizumi", "Muta", email = "toshizumi.muta@psycholo.studio",
                   role = c("aut", "cre"))
 Description: A thin, auditable toolkit for measuring the meaning of nominal and

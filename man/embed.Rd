@@ -62,10 +62,15 @@ calling the API.}
   cross-provider comparison.}
 }
 \value{
-A numeric matrix (texts x dimensions) with four attributes:
-  \code{provider}, \code{model}, \code{access_date}, and \code{texts} ---
-  the exact strings that were sent to the API, in row order.
-  With \code{dry_run = TRUE}, an invisible list of counts.
+A numeric matrix (texts x dimensions). Four attributes identify what
+  was embedded and by what: \code{provider}, \code{model},
+  \code{access_date}, and \code{texts} --- the exact strings that were sent
+  to the API, in row order. Further attributes record the conditions of the
+  call --- \code{request_options}, \code{fetch_dates}, \code{software}, and
+  \code{request_batches}, a fingerprint of which texts travelled in the same
+  request (the returned vector for a text depends on what accompanied it, and
+  no provider exposes that as a named option). \code{embedding_info()} prints
+  the set. With \code{dry_run = TRUE}, an invisible list of counts.
 }
 \description{
 Sends a character vector of texts to Gemini, Voyage AI, or OpenAI and

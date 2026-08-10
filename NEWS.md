@@ -1,3 +1,17 @@
+# qualembed 0.4.1
+
+* `embed()` now records which texts were sent in the same request, and
+  `embedding_info()` prints it. The vector a provider returns for a text depends
+  on what accompanied it in that request: the same word, same model, same
+  options, sent once alongside nineteen others and once alongside seventy-six,
+  came back at a cosine of .9998 to .9999, enough to move a cross-language
+  congruence by .01. No provider exposes the composition of a request as a named
+  option, so it appeared in no existing record. Each request is fingerprinted by
+  its size and an order-independent hash of its contents, which is enough to
+  check whether a later run sent the same set without storing the texts a second
+  time. The fingerprints live in a cache attribute, so existing caches remain
+  valid and report as unrecorded rather than being guessed at.
+
 # qualembed 0.4.0
 
 * New `embedding_info()` prints the provenance of an embedding matrix, or of an

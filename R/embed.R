@@ -125,6 +125,24 @@
 #               都合で参加者IDに置き換わりうるので、本文は別に保持する。
 #               attr(emb, "texts") で確認できる。
 #
+
+# ── 一括リクエストの指紋 ────────────────────────────────────
+# プロバイダは一回の呼び出しでテキストの配列を受け取り、あるテキストに
+# 返るベクトルは、その配列に何が同居していたかに依存する。名前のついた
+# オプションではないので request_options には現れない。ここでは順序に
+# 依存しない指紋（件数とハッシュ）を作り、読者が「自分は同じ集合を送ったか」
+# を照合できるようにする。依存を増やさないため base R だけで書く。
+# 2^24 を法にしているので衝突は皆無ではない。同定ではなく照合のための値である。
+.request_fingerprint <- function(texts) {
+  s <- sort(unique(texts))
+  h <- 0
+  for (tx in s) {
+    for (cp in utf8ToInt(tx)) h <- (h * 131 + cp) %% 16777216
+    h <- (h * 131 + 10) %% 16777216
+  }
+  sprintf("n=%d;h=%06x", length(s), h)
+}
+
 #' Embed texts with a commercial LLM embedding API
 #'
 #' Sends a character vector of texts to Gemini, Voyage AI, or OpenAI and
@@ -165,10 +183,15 @@
 #'   rises from .26 to .36 when it is removed. Pass \code{input_type = NULL}
 #'   to send no instruction, and state whichever you used when you report a
 #'   cross-provider comparison.
-#' @return A numeric matrix (texts x dimensions) with four attributes:
-#'   \code{provider}, \code{model}, \code{access_date}, and \code{texts} ---
-#'   the exact strings that were sent to the API, in row order.
-#'   With \code{dry_run = TRUE}, an invisible list of counts.
+#' @return A numeric matrix (texts x dimensions). Four attributes identify what
+#'   was embedded and by what: \code{provider}, \code{model},
+#'   \code{access_date}, and \code{texts} --- the exact strings that were sent
+#'   to the API, in row order. Further attributes record the conditions of the
+#'   call --- \code{request_options}, \code{fetch_dates}, \code{software}, and
+#'   \code{request_batches}, a fingerprint of which texts travelled in the same
+#'   request (the returned vector for a text depends on what accompanied it, and
+#'   no provider exposes that as a named option). \code{embedding_info()} prints
+#'   the set. With \code{dry_run = TRUE}, an invisible list of counts.
 #'
 #' @section Why the matrix carries its own texts:
 #' Row names are whatever you asked for. If you call
@@ -264,6 +287,7 @@ embed <- function(texts,
   cache_file <- NULL
   cached <- list()
   fetch_dates <- character(0)
+  fetch_batch <- character(0)
   if (isTRUE(cache)) {
     if (!dir.exists(cache_dir)) dir.create(cache_dir, recursive = TRUE)
     # オプションがベクトルを変える場合はキャッシュを分ける
@@ -289,6 +313,13 @@ embed <- function(texts,
     # 値に日付を抱かせると全キャッシュが無効になり取り直しに実費がかかる。
     fetch_dates <- attr(cached, "fetch_date", exact = TRUE)
     if (is.null(fetch_dates)) fetch_dates <- character(0)
+    # 同じ理由で、そのベクトルがどの一括リクエストで返ってきたかも持つ。
+    # プロバイダは一回の呼び出しで配列を受け取り、返るベクトルは配列に
+    # 何が同居していたかに依存する（実測: 同一テキスト・同一オプションで
+    # コサイン .9998–.9999）。これはオプションではないので request_options
+    # には現れず、記録しなければ後から復元できない。
+    fetch_batch <- attr(cached, "fetch_batch", exact = TRUE)
+    if (is.null(fetch_batch)) fetch_batch <- character(0)
     # 初回だけ、キャッシュがどこに何を書くかを知らせる。参加者のテキストを
     # 扱う利用者が「平文の二つ目の写しが黙って作られた」状態にならないよう、
     # 論文の data-ethics 規則をライブラリ側からも一度は言う。
@@ -338,9 +369,13 @@ embed <- function(texts,
       for (i in seq_along(texts_chunk))
         cached[[texts_chunk[i]]] <<- mat_chunk[i, ]
       fetch_dates[texts_chunk] <<- today
+      # この塊が「どの集合と一緒に送られたか」を、返ってきた各テキストに
+      # 対して記録する。同じ塊に入っていたテキストは同じ指紋を持つ。
+      fetch_batch[texts_chunk] <<- .request_fingerprint(texts_chunk)
       if (!is.null(cache_file)) {
         to_save <- cached
         attr(to_save, "fetch_date") <- fetch_dates
+        attr(to_save, "fetch_batch") <- fetch_batch
         tmp <- paste0(cache_file, ".tmp", Sys.getpid())
         saveRDS(to_save, tmp)
         if (!file.rename(tmp, cache_file)) {
@@ -409,6 +444,10 @@ embed <- function(texts,
   attr(mat, "fetch_dates") <-
     if (length(known)) range(known) else NA_character_
   attr(mat, "n_date_unknown") <- length(texts_clean) - length(known)
+  kb <- if (length(fetch_batch))
+    stats::na.omit(unname(fetch_batch[texts_clean])) else character(0)
+  attr(mat, "request_batches") <- if (length(kb)) table(kb) else NULL
+  attr(mat, "n_batch_unknown") <- length(texts_clean) - length(kb)
   attr(mat, "software") <- paste0("qualembed ", .qualembed_version(),
                                   "; ", R.version.string)
   mat
@@ -494,6 +533,17 @@ embedding_info <- function(x) {
               if (is.null(nf)) "" else
                 sprintf(" (%d fetched, %d from cache)", nf,
                         attr(x, "n_from_cache", exact = TRUE))))
+  rb <- attr(x, "request_batches", exact = TRUE)
+  ub <- attr(x, "n_batch_unknown", exact = TRUE)
+  rb_str <- if (is.null(rb) || !length(rb))
+    "not recorded (matrix predates this field)" else
+    sprintf("%d request%s (%s)", length(rb), if (length(rb) == 1) "" else "s",
+            paste(sprintf("%s x%d", names(rb), as.integer(rb)), collapse = ", "))
+  # 返るベクトルは同じリクエストに何が同居したかに依存する。オプションでは
+  # ないので上の行には出ない。ここに出しておかないと，報告のしようがない。
+  cat(sprintf("Request batches : %s%s\n", rb_str,
+              if (!is.null(ub) && ub > 0 && ub < nrow(x))
+                sprintf(" (%d of %d texts unrecorded)", ub, nrow(x)) else ""))
   cat(sprintf("Software        : %s\n", g("software", "not recorded")))
   if (is.null(attr(x, "texts", exact = TRUE)))
     cat("Note            : no `texts` attribute -- what was embedded",
