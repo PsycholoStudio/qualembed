@@ -5,7 +5,11 @@
 \title{旧名（後方互換）。既定の標準化も pca_2d に合わせて FALSE に変更した。}
 \usage{
 pca_coords(mat, scale = FALSE)
+
+pca_coords(mat, scale = FALSE)
 }
 \description{
+旧名（後方互換）。既定の標準化も pca_2d に合わせて FALSE に変更した。
+
 旧名（後方互換）。既定の標準化も pca_2d に合わせて FALSE に変更した。
 }

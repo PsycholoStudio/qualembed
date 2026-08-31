@@ -2,18 +2,18 @@
 % Please edit documentation in R/stats-viz.R
 \name{pca_2d}
 \alias{pca_2d}
-\title{PCAで2次元に圧縮（Method の Z = X̃V₂ に対応: 中心化のみ・標準化なし）}
+\title{PCA で2次元に圧縮（後方互換。新しいコードは coords_2d() を使うこと）}
 \usage{
 pca_2d(mat, scale = FALSE)
 }
 \arguments{
 \item{mat}{embedding行列 (n × d)}
 
-\item{scale}{TRUE で各次元を標準化（既定 FALSE = Method と一致）}
+\item{scale}{TRUE で各次元を標準化（既定 FALSE）}
 }
 \value{
-list(df = 座標データフレーム, ve = 分散説明率[2], prcomp = prcomp結果)
+coords_2d(layout = "pca") と同じ
 }
 \description{
-PCAで2次元に圧縮（Method の Z = X̃V₂ に対応: 中心化のみ・標準化なし）
+PCA で2次元に圧縮（後方互換。新しいコードは coords_2d() を使うこと）
 }

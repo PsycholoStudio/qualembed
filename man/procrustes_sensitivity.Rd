@@ -4,7 +4,7 @@
 \alias{procrustes_sensitivity}
 \title{Procrustes m² の k に対する感度分析（Method: k ∈ {2,...,10}）}
 \usage{
-procrustes_sensitivity(X, Y, ks = 2:10)
+procrustes_sensitivity(X, Y, ks = 2:10, layout = c("pca", "mds"))
 }
 \arguments{
 \item{X, }{Y  embedding 行列}

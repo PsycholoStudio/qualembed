@@ -328,7 +328,8 @@ items <- get_bfi_items()          # 25 Big Five item texts, with factor labels
 emb   <- embed(items$en)
 
 # Do items of the same factor sit closer than items of different factors?
-test_delta(cos_sim_matrix(emb), items$factor)
+d <- test_delta(cos_sim_matrix(emb), items$factor)
+d$delta_std   # divided by SD(between); the raw delta is not comparable across models
 
 # Does clustering recover the five factors?
 test_ari(emb, items$factor, k = 5)
@@ -339,16 +340,59 @@ mantel_test(cos_sim_matrix(emb_a), cos_sim_matrix(emb_b))
 
 | Function | Question it answers |
 |---|---|
-| `test_delta()` | Is within-group similarity higher than between-group? |
+| `test_delta()` | Is within-group similarity higher than between-group? (`delta_std` compares across models) |
 | `test_ari()`, `test_ari_sim()` | Does clustering recover a partition you specified? |
 | `mantel_test()` | Do two similarity matrices agree? |
 | `procrustes_m2()`, `procrustes_sensitivity()` | How well do two spaces align, and which items disagree? |
 | `semantic_projection()` | Where does each text fall on an axis you defined? |
 | `within_between_sim()`, `cos_sim_matrix()`, `euclidean_dist()` | The underlying quantities |
-| `pca_2d()`, `plot_embedding_2d()`, `plot_similarity_heatmap()` | Visual sketches |
+| `coords_2d()`, `plot_embedding_2d()`, `plot_similarity_heatmap()` | Visual sketches |
 | `save_embeddings()`, `write_stats()`, `save_fig()` | Archive results reproducibly |
+| `progress_ticker()` | Show progress and ETA in long permutation loops |
 
 All tests use 9,999 permutations by default; pass `n_perm =` to change it.
+
+**Two dimensions, and which two.** `coords_2d()` defaults to non-metric
+multidimensional scaling rather than to PCA, and the reason is worth a paragraph
+because it decides what your figures are worth.
+
+An embedding puts far fewer texts into the space than the space has dimensions,
+so the variance spreads thinly over many directions and the first two components
+hold little of it — 18% for the 169 narrative segments in the paper. PCA is
+maximising that 18%; it is not trying to keep the *ranking* of the distances,
+which is the one thing a reader takes off a scatter plot. Measured on six
+materials under three providers, the rank correlation between plotted and
+measured distances rose in all eighteen cells when the layout changed to
+non-metric MDS — for those segments, from .16–.54 to .76–.84. Under two of the
+three providers the PCA plane preserved no more of the ordering than random
+points would.
+
+The choice is *not* PCA versus MDS. For Euclidean distances, classical (metric)
+MDS and PCA are the same configuration — identical to numerical precision. The
+choice is metric versus non-metric, and the rule is to match the reduction to
+what the next step reads:
+
+- A **display** is read by the ranking of distances, so use non-metric MDS.
+  That is what `coords_2d()` and `plot_trajectory()` now do.
+- **Procrustes m²** is a metric criterion: squared distances after a similarity
+  transform, which allows one uniform scale factor and no more. Non-metric MDS
+  fits each of the two spaces its own monotone transformation, so their
+  coordinates land on scales that no single factor reconciles. Use the metric
+  reduction — which is PCA. That is what `procrustes_m2()` does, and passing
+  `layout = "mds"` overrides it if you want to see the difference (on our data
+  it is .02 to .06 of m², with the ordering across providers unchanged).
+
+**Rotation is a separate question, and it is about meaning, not accuracy.**
+Rotating a set of points in the plane changes no distance and no angle between
+them, so it cannot make a display more faithful — factor analysis rotates
+because *loadings* are what gets interpreted there, and a scatter of points has
+no loadings. What rotation can do is put an interpretable direction on an axis.
+Pass `axis =` a direction you specified in advance (the difference between your
+high and low anchor centroids, say) and the configuration turns so that
+direction lies along the horizontal. Fidelity is untouched; the axis acquires a
+name. On the paper's narrative segments this also fixed a sign that had come out
+reversed under one provider, so panels from different providers became
+comparable.
 
 **One thing the package will not do for you.** Do not ask the embeddings how many
 dimensions your construct has. Eigenvalue rules and network methods applied to an
@@ -541,16 +585,36 @@ transcription, use that instead.
 ### Looking at a trajectory
 
 ```r
-plot_trajectory(emb, seg, doc = "P07")                       # the map with arrows
-plot_recurrence(emb, seg, doc = "P07")                       # nothing projected
-plot_arc(emb, seg, y = "forward_flow", null_band = 999)      # the arc over time
+plot_recurrence(emb, seg, doc = "P07")                       # start here
+plot_arc(emb, seg, y = "forward_flow", null_band = 999)      # and here
 plot_arc(emb, seg, y = "projection", high = H, low = L)      # on your own axis
+plot_trajectory(emb, seg, doc = "P07")                       # the map, read with care
 
 trajectory_stats(emb, seg)          # path length, step, straightness (full space)
 trajectory_null(emb, seg, 999)      # is the order doing anything?
 trajectory_fidelity(emb, seg)       # can the map be trusted?
 recurrence_stats(emb, seg)          # RR, DET, LAM at a fixed recurrence rate
 ```
+
+**The order of that list is the recommendation.** The first two displays are
+projection-free: every quantity they show is computed in the full space, and the
+axes carry nothing but position. The map comes last because it is the only one of
+the three whose geometry you must qualify while reading it, and a display you have
+to caveat is a poor first look at your data.
+
+`plot_recurrence()` is a segment × segment cosine matrix for one document. Every
+cell is computed in the **full** space and both axes are just position, so nothing
+is projected at all. Near-diagonal blocks are topic episodes; an off-diagonal block
+is the speaker returning to an earlier theme; a bright vertical stripe is one early
+passage the rest of the interview keeps referring back to. Read it against
+`trajectory_null()`: on our own material the topic *shifts* it displays survive a
+permutation of segment order and the *returns* do not, which is the kind of thing
+you want to know before you write either into a paper.
+
+`plot_arc()` draws one full-space quantity per segment against narrative position:
+a projection onto an axis you defined, the distance from the previous segment, or
+the mean distance from everything said so far. `null_band` shuffles the segment
+order and shades where a bag of the same segments would have fallen.
 
 `plot_trajectory()` is the picture most people picture: each segment placed by the
 first two principal components, joined in the order it was spoken, with arrows.
@@ -559,25 +623,12 @@ first two principal components, joined in the order it was spoken, with arrows.
 Distance is not exact, so "this person travelled further" is not.** That is a
 full-space quantity and `trajectory_stats()` measures it. The subtitle prints how
 much variance the two components hold and how well the on-page distances
-rank-correlate with the measured ones, so you can see each time how far to trust
-the ruler.
-
-Draw one document at a time. On our data a per-document projection holds 69% of
-the variance with a rank correlation of .89 against the full-space distances; put
-every participant on one shared projection and that falls to 12% and .37. The
-function switches to a shared projection when you pass several documents and warns
-when fidelity collapses.
-
-`plot_recurrence()` is a segment × segment cosine matrix for one document. Every
-cell is computed in the **full** space and both axes are just position, so nothing
-is projected at all. Near-diagonal blocks are topic episodes; an off-diagonal block
-is the speaker returning to an earlier theme; a bright vertical stripe is one early
-passage the rest of the interview keeps referring back to.
-
-`plot_arc()` draws one full-space quantity per segment against narrative position:
-a projection onto an axis you defined, the distance from the previous segment, or
-the mean distance from everything said so far. `null_band` shuffles the segment
-order and shades where a bag of the same segments would have fallen.
+rank-correlate with the measured ones — and beside each, the null. Read the
+difference, not the raw number: a plane fitted to one short document holds 69% of
+the variance with a rank correlation of .89, and the same count of segments drawn
+at random from the pool holds 74% and .87. Pass `scope = "shared"` when you want
+panels that can be compared with one another; the basis and the axis limits then
+come from the whole pool rather than from each document's handful of points.
 
 **Three cautions the package enforces rather than merely documents.**
 
@@ -609,7 +660,7 @@ embed(texts, provider = "openai")
 | Provider | Default model | Dim. | Notes |
 |---|---|---|---|
 | `gemini` | `gemini-embedding-001` | 3,072 | Generous free tier; multilingual; a daily quota a large job can hit |
-| `voyage` | `voyage-multilingual-2` | 1,024 | Multilingual; a legacy product of its provider |
+| `voyage` | `voyage-4` | 1,024 | Multilingual; strict free-tier rate limit |
 | `openai` | `text-embedding-3-small` | 1,536 | Requires billing; the least anisotropic of the three |
 
 Override the model, or pass provider-specific options, through `...`:
@@ -617,22 +668,42 @@ Override the model, or pass provider-specific options, through `...`:
 ```r
 embed(x, provider = "openai", model = "text-embedding-3-large")
 embed(x, provider = "openai", dims = 512)             # shorter vectors
-embed(x, provider = "gemini", task_type = "SEMANTIC_SIMILARITY")
-embed(x, provider = "voyage", input_type = NULL)       # no instruction
+embed(x, provider = "gemini", task_type = "CLUSTERING")
+embed(x, provider = "voyage", input_type = "document")  # prepend an instruction
 ```
 
 Options that change the returned vectors get their own cache file, so results from
-different settings never mix.
+different settings never mix. The key is built from the *resolved* options rather than
+from what you typed, so `embed(x, provider = "gemini")` and the same call with
+`task_type = "SEMANTIC_SIMILARITY"` share a file — they send the same request — and an
+option left at `NULL` is not sent and does not enter the key. Two consequences follow.
+Changing a default in a future version moves the key, so old vectors are not silently
+served under a name that no longer describes them. And rerunning someone else's code
+with `cache = TRUE` reads their cache rather than the endpoint; pass `refresh = TRUE`
+to reach the API.
 
-**One default is not neutral.** For Voyage, `input_type` defaults to `"document"`,
-which makes the endpoint prepend a retrieval instruction to the text before encoding
-it. Gemini's `task_type` and OpenAI's `dimensions` are left unset, so those two encode
-the string as given. The instruction is not cosmetic: on the Big Five items the two
-Voyage spaces agree with each other at Mantel *r*~M~ = .86, and clustering agreement
-with the theoretical factors rises from .26 to .36 when it is removed. Pass
-`input_type = NULL` to send none, and say which you used whenever you report a
-comparison across providers — otherwise the comparison is of provider *and*
-configuration.
+**The defaults are chosen, not inherited.** Every statistic in this package rests on a
+cosine similarity matrix, which makes every task here a symmetric one, and the three
+APIs do not agree on what to do when you say nothing.
+
+For **Gemini**, `task_type` defaults to `"SEMANTIC_SIMILARITY"`. Sending no task type
+is not a neutral option: the API enum defines `TASK_TYPE_UNSPECIFIED` as "unset value,
+which will default to one of the other enum values", it holds no value meaning *no
+conditioning*, and omitting the field returns vectors identical to `"RETRIEVAL_QUERY"`
+— the query side of an asymmetric retrieval pair. The three symmetric task types
+(`SEMANTIC_SIMILARITY`, `CLUSTERING`, `CLASSIFICATION`) disagree with each other about
+as much as two different providers do, so the choice has to be stated.
+
+For **Voyage**, `input_type` defaults to `NULL`, which is Voyage's own default and
+sends no instruction. Setting it to `"document"` or `"query"` makes the endpoint
+prepend a retrieval instruction before encoding, so what you embed is the instruction
+plus your text rather than your text.
+
+**OpenAI** exposes no equivalent parameter and always encodes the string as given.
+
+A common condition across all three is therefore not attainable. State the options you
+used whenever you report a comparison across providers — otherwise the comparison is of
+provider *and* configuration.
 
 **Vectors from different providers are not comparable.** They live in different spaces
 with different dimensionalities. Compare *relations* between them —

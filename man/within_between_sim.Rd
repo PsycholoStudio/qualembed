@@ -12,8 +12,19 @@ within_between_sim(sim_mat, groups)
 \item{groups}{各行に対応するグループラベル (character vector)}
 }
 \value{
-list(within, between, delta = within - between, ratio)
+list(within, between, delta = within - between, ratio,
+  sd_between, delta_std = delta / sd_between)
 }
 \description{
-グループ内・グループ間の平均コサイン類似度と差 Δ
+生の `delta` は空間の密度に依存する。同じテキストでもプロバイダにより
+グループ間コサインの平均は三倍ほど違うので、生の差はモデルをまたいで
+比べられない。`delta_std` はグループ間類似度の標準偏差で割った尺度不変
+版で、こちらは空間をまたいで読める。
+}
+\examples{
+\dontrun{
+s <- cos_sim_matrix(emb)
+wb <- within_between_sim(s, groups)
+wb$delta_std   # プロバイダ間で比較できるのはこちら
+}
 }

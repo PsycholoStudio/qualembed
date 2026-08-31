@@ -149,18 +149,92 @@ euclidean_dist <- function(mat) {
 }
 
 #' グループ内・グループ間の平均コサイン類似度と差 Δ
+#'
+#' 生の `delta` は空間の密度に依存する。同じテキストでもプロバイダにより
+#' グループ間コサインの平均は三倍ほど違うので、生の差はモデルをまたいで
+#' 比べられない。`delta_std` はグループ間類似度の標準偏差で割った尺度不変
+#' 版で、こちらは空間をまたいで読める。
+#'
 #' @param sim_mat cos_sim_matrix() の出力
 #' @param groups  各行に対応するグループラベル (character vector)
-#' @return list(within, between, delta = within - between, ratio)
+#' @return list(within, between, delta = within - between, ratio,
+#'   sd_between, delta_std = delta / sd_between)
+#' @examples
+#' \dontrun{
+#' s <- cos_sim_matrix(emb)
+#' wb <- within_between_sim(s, groups)
+#' wb$delta_std   # プロバイダ間で比較できるのはこちら
+#' }
 #' @export
 within_between_sim <- function(sim_mat, groups) {
   ut   <- upper.tri(sim_mat)
   same <- outer(groups, groups, `==`)
   wi   <- mean(sim_mat[ut & same])
   bt   <- mean(sim_mat[ut & !same])
-  list(within = wi, between = bt, delta = wi - bt, ratio = wi / bt)
+  sdb  <- stats::sd(sim_mat[ut & !same])
+  list(within = wi, between = bt, delta = wi - bt, ratio = wi / bt,
+       sd_between = sdb, delta_std = (wi - bt) / sdb)
 }
 
+
+# ── 1b. 進捗表示 ─────────────────────────────────────────────
+
+#' 長い処理の進捗を表示する
+#'
+#' 並べ替え検定やジャックナイフは、材料によっては数分から十数分かかる。
+#' 走らせた人が止まっているのか進んでいるのか分からないのは、再現用の
+#' コードとして望ましくない。`embed()` のバッチ表示と同じ体裁（端末なら
+#' `\r` で 1 行を上書き、ログなら一定間隔で 1 行ずつ追記）で、追加の
+#' パッケージを使わずに進捗と残り時間を出す。
+#'
+#' `min_secs` 秒より早く終わる見込みのものは何も表示しない。最初の数回の
+#' 実測から見積もるので、短い処理の出力でログが埋まることがない。
+#'
+#' @param label    表示名（"delta perm" など）
+#' @param n_total  総反復数
+#' @param min_secs この秒数より早く終わる見込みなら何も出さない
+#' @param every    端末でないとき、何秒ごとに 1 行追記するか
+#' @param stream   出力先。既定は `stderr()`
+#' @return list(tick, done)。`tick(k = 1L)` を反復ごとに、`done()` を最後に呼ぶ
+#' @examples
+#' \dontrun{
+#' pb <- progress_ticker("jackknife", n)
+#' for (i in seq_len(n)) { ...; pb$tick() }
+#' pb$done()
+#' }
+#' @export
+progress_ticker <- function(label, n_total, min_secs = 10, every = 15,
+                            stream = stderr()) {
+  t0 <- Sys.time(); done <- 0L; shown <- FALSE; last <- t0
+  tty <- isatty(stream)
+  list(
+    tick = function(k = 1L) {
+      done <<- done + k
+      now <- Sys.time()
+      el  <- as.numeric(difftime(now, t0, units = "secs"))
+      if (done < 1 || el <= 0) return(invisible(NULL))
+      eta <- el / done * (n_total - done)
+      if (!shown && (el + eta) < min_secs) return(invisible(NULL))
+      if (!tty && shown && as.numeric(difftime(now, last, units = "secs")) < every &&
+          done < n_total) return(invisible(NULL))
+      shown <<- TRUE; last <<- now
+      cat(sprintf("%s  [%s] %d/%d (%.0f%%)%s%s",
+                  if (tty) "\r" else "", label, done, n_total, 100 * done / n_total,
+                  if (eta > 5) sprintf("  ETA ~%.0fs", eta) else "        ",
+                  if (tty) "" else "\n"),
+          file = stream)
+      flush(stream)
+    },
+    done = function() {
+      if (shown) {
+        cat(sprintf("%s  [%s] %d/%d (100%%)  %.0fs 経過        \n",
+                    if (tty) "\r" else "", label, n_total, n_total,
+                    as.numeric(difftime(Sys.time(), t0, units = "secs"))), file = stream)
+        flush(stream)
+      }
+    }
+  )
+}
 
 # ── 2. 統計的推論 ───────────────────────────────────────────
 
@@ -174,20 +248,34 @@ within_between_sim <- function(sim_mat, groups) {
 #' @param sim_mat cos_sim_matrix() の出力
 #' @param groups  グループラベル
 #' @param n_perm  並べ替え回数
-#' @return list(within, between, delta, p, n_perm)
+#' @return list(within, between, delta, sd_between, delta_std, p, n_perm)
 #' @export
 test_delta <- function(sim_mat, groups, n_perm = 9999) {
   .check_sim_groups(sim_mat, groups, "test_delta")
-  ut  <- upper.tri(sim_mat)
   obs <- within_between_sim(sim_mat, groups)
-  null <- replicate(n_perm, {
-    g    <- sample(groups)
-    same <- outer(g, g, `==`)
-    mean(sim_mat[ut & same]) - mean(sim_mat[ut & !same])
-  })
+  # 帰無分布は上三角のペアだけを見る。n が千を超えると n x n の論理行列を
+  # 毎反復で組んで添字するのが支配的になるので、ペアの行・列番号と類似度を
+  # 一度だけ取り出し、以後はベクトルで回す。算術も乱数列も同じで、結果は
+  # 変わらない。
+  n   <- nrow(sim_mat)
+  idx <- which(upper.tri(sim_mat))
+  ri  <- ((idx - 1L) %% n) + 1L
+  ci  <- ((idx - 1L) %/% n) + 1L
+  sv  <- sim_mat[idx]
+  gi  <- as.integer(factor(groups))
+  pb <- progress_ticker("delta perm", n_perm)
+  null <- vapply(seq_len(n_perm), function(.i) {
+    g    <- sample(gi)
+    same <- g[ri] == g[ci]
+    v <- mean(sv[same]) - mean(sv[!same])
+    pb$tick(); v
+  }, numeric(1))
+  pb$done()
   list(within = obs$within, between = obs$between, delta = obs$delta,
+       sd_between = obs$sd_between, delta_std = obs$delta_std,
        p = .perm_p(obs$delta, null), n_perm = n_perm)
 }
+
 
 #' Adjusted Rand Index（Hubert & Arabie, 1985）
 #' 外部パッケージへの依存を避けるため直接実装
@@ -226,7 +314,10 @@ test_ari_sim <- function(sim_mat, groups, k = length(unique(groups)),
   hc   <- hclust(d, method = "ward.D2")
   cl   <- cutree(hc, k = k)
   obs  <- adjusted_rand_index(cl, groups)
-  null <- replicate(n_perm, adjusted_rand_index(cl, sample(groups)))
+  pb <- progress_ticker("ARI perm", n_perm)
+  null <- vapply(seq_len(n_perm), function(.i) {
+    v <- adjusted_rand_index(cl, sample(groups)); pb$tick(); v }, numeric(1))
+  pb$done()
   list(ari = obs, p = .perm_p(obs, null),
        clusters = cl, table = table(cluster = cl, group = groups),
        hclust = hc, n_perm = n_perm)
@@ -276,14 +367,15 @@ mantel_test <- function(m1, m2, n_perm = 9999) {
 #' @param k       比較に使う主成分数
 #' @param n_perm  PROTEST の並べ替え回数（0 で PROTEST をスキップ）
 #' @return list(m2, corr = sqrt(1-m2), p, residuals（項目別・降順）, k, n_perm)
-#' @export
-procrustes_m2 <- function(X, Y, k = 5, n_perm = 9999) {
+procrustes_m2 <- function(X, Y, k = 5, n_perm = 9999,
+                          layout = c("pca", "mds")) {
   stopifnot(nrow(X) == nrow(Y))
   if (!is.null(rownames(X)) && !is.null(rownames(Y)))
     stopifnot(identical(rownames(X), rownames(Y)))
+  layout <- match.arg(layout)
   k  <- min(k, ncol(X), ncol(Y), nrow(X) - 1)
-  Xk <- prcomp(X)$x[, seq_len(k), drop = FALSE]
-  Yk <- prcomp(Y)$x[, seq_len(k), drop = FALSE]
+  Xk <- .layout_kd(X, k, layout)
+  Yk <- .layout_kd(Y, k, layout)
   pro <- vegan::procrustes(Xk, Yk, symmetric = TRUE)
   p <- NA_real_
   if (n_perm > 0) {
@@ -293,20 +385,23 @@ procrustes_m2 <- function(X, Y, k = 5, n_perm = 9999) {
   resid <- stats::residuals(pro)
   names(resid) <- rownames(X)
   list(m2 = pro$ss, corr = sqrt(1 - pro$ss), p = p,
-       residuals = sort(resid, decreasing = TRUE), k = k, n_perm = n_perm)
+       residuals = sort(resid, decreasing = TRUE), k = k, n_perm = n_perm,
+       layout = layout)
 }
 
 #' Procrustes m² の k に対する感度分析（Method: k ∈ {2,...,10}）
 #' @param X, Y  embedding 行列
 #' @param ks    試す主成分数の範囲
 #' @return data.frame(k, m2)
-#' @export
-procrustes_sensitivity <- function(X, Y, ks = 2:10) {
+procrustes_sensitivity <- function(X, Y, ks = 2:10,
+                                   layout = c("pca", "mds")) {
+  layout <- match.arg(layout)
   ks <- ks[ks <= min(ncol(X), ncol(Y), nrow(X) - 1)]
   data.frame(
     k  = ks,
-    m2 = vapply(ks, function(k) procrustes_m2(X, Y, k = k, n_perm = 0)$m2,
-                numeric(1))
+    m2 = vapply(ks, function(k)
+      procrustes_m2(X, Y, k = k, n_perm = 0, layout = layout)$m2, numeric(1)),
+    layout = layout
   )
 }
 
@@ -344,18 +439,77 @@ semantic_projection <- function(item_mat, high_mat, low_mat) {
 
 # ── 4. 次元削減 ─────────────────────────────────────────────
 
-#' PCAで2次元に圧縮（Method の Z = X̃V₂ に対応: 中心化のみ・標準化なし）
+#' 表示用の2次元座標
+#'
+#' 既定は非計量MDS。PCA は分散を最大化するので、次元数が点数を大きく超える
+#' 埋め込みでは第2成分までに乗る分散が少なく、平面が点を潰す。距離の順位を
+#' 目的関数にする MDS のほうが、同じ2次元でも元の遠近をよく保つ
+#' （実測: 6材料 × 3プロバイダの18セルすべてで MDS が上回った）。
+#'
+#' **選択は「PCA か MDS か」ではない。** ユークリッド距離に対しては古典的
+#' （計量）MDS と PCA は同一の配置である（数値精度まで一致する）。選ぶのは
+#' 計量か非計量かであり、規則は「下流が読むものに縮約の目的関数を合わせる」
+#' の一つで済む。図は距離の**順位**で読まれるので非計量、Procrustes m2 は
+#' 相似変換後の二乗距離という**計量**の基準なので計量（= PCA）。
+#' procrustes_m2() の既定が PCA のままなのはそのためである。
+#'
 #' @param mat    embedding行列 (n × d)
-#' @param scale  TRUE で各次元を標準化（既定 FALSE = Method と一致）
-#' @return list(df = 座標データフレーム, ve = 分散説明率[2], prcomp = prcomp結果)
+#' @param layout "mds"（既定）/ "pca"
+#' @param axis   事前指定の方向。渡すと x 軸がその方向に最も沿う向きへ回す。
+#'   回転は距離を変えないので、忠実さはそのままで軸だけが解釈可能になる。
+#' @param scale  layout = "pca" のとき各次元を標準化（既定 FALSE = Method と一致）
+#' @return list(df = 座標データフレーム(PC1, PC2, label), ve = 分散説明率[2]
+#'   （MDS では NA）, layout = 使った配置, lab = 軸ラベル[2]）
 #' @export
-pca_2d <- function(mat, scale = FALSE) {
-  pc <- prcomp(mat, scale. = scale)
-  df <- as.data.frame(pc$x[, 1:2])
+coords_2d <- function(mat, layout = c("mds", "pca"), axis = NULL,
+                      scale = FALSE) {
+  layout <- match.arg(layout)
+  if (layout == "pca" && isTRUE(scale)) {
+    pc <- stats::prcomp(mat, scale. = TRUE)
+    xy <- pc$x[, 1:2, drop = FALSE]
+    ve <- round(summary(pc)$importance[2, 1:2] * 100, 1)
+    used <- "pca"
+  } else {
+    xy   <- .layout_2d(mat, layout, axis)
+    used <- attr(xy, "layout")
+    v    <- attr(xy, "ve")
+    ve   <- if (is.na(v)) c(NA_real_, NA_real_) else NULL
+    if (is.null(ve)) {
+      pc <- stats::prcomp(mat)
+      ve <- round(pc$sdev[1:2]^2 / sum(pc$sdev^2) * 100, 1)
+    }
+  }
+  df <- as.data.frame(xy[, 1:2, drop = FALSE])
+  colnames(df) <- c("PC1", "PC2")     # 列名は後方互換のため据え置き
+  df$label <- rownames(mat)
+  lab <- if (!is.null(axis)) c("Anchor axis", .ax_lab(used, 2))
+         else c(.ax_lab(used, 1), .ax_lab(used, 2))
+  list(df = df, ve = unname(ve), layout = used, lab = lab)
+}
+
+#' PCA で2次元に圧縮（後方互換。新しいコードは coords_2d() を使うこと）
+#' @param mat    embedding行列 (n × d)
+#' @param scale  TRUE で各次元を標準化（既定 FALSE）
+#' @return coords_2d(layout = "pca") と同じ
+#' @export
+pca_2d <- function(mat, scale = FALSE) coords_2d(mat, "pca", scale = scale)
+
+#' 旧名（後方互換）。既定の標準化も pca_2d に合わせて FALSE に変更した。
+pca_coords <- pca_2d
+
+#' t-SNE で2次元に圧縮（PCAマップの頑健性チェック用・Rtsne が必要）
+#' 戻り値の列名は plot_embedding_2d() と互換のため PC1/PC2 とする
+tsne_2d <- function(mat, perplexity = NULL, seed = 2026) {
+  if (!requireNamespace("Rtsne", quietly = TRUE))
+    stop("tsne_2d には Rtsne が必要です: install.packages('Rtsne')")
+  set.seed(seed)
+  if (is.null(perplexity)) perplexity <- max(2, floor((nrow(mat) - 1) / 3))
+  fit <- Rtsne::Rtsne(mat, dims = 2, perplexity = perplexity,
+                      pca = FALSE, check_duplicates = FALSE)
+  df <- as.data.frame(fit$Y)
   colnames(df) <- c("PC1", "PC2")
   df$label <- rownames(mat)
-  ve <- round(summary(pc)$importance[2, 1:2] * 100, 1)
-  list(df = df, ve = ve, prcomp = pc)
+  list(df = df, ve = c(NA_real_, NA_real_))
 }
 
 #' 旧名（後方互換）。既定の標準化も pca_2d に合わせて FALSE に変更した。
@@ -402,14 +556,18 @@ umap_2d <- function(mat, n_neighbors = NULL, seed = 2026) {
 #' @param groups 色分け用グループラベル（NULL で単色）
 #' @param title  図のタイトル
 #' @param size   点のサイズ
-#' @export
 plot_embedding_2d <- function(proj, labels = NULL, groups = NULL,
                               title = NULL, size = 3.5) {
-  df <- if (is.data.frame(proj)) proj else proj$df
-  ve <- if (is.data.frame(proj)) c(NA_real_, NA_real_) else proj$ve
+  df  <- if (is.data.frame(proj)) proj else proj$df
+  ve  <- if (is.data.frame(proj)) c(NA_real_, NA_real_) else proj$ve
+  lab <- if (is.data.frame(proj) || is.null(proj$lab)) c("PC1", "PC2")
+         else proj$lab
+  lay <- if (is.data.frame(proj)) "pca" else (proj$layout %||% "pca")
   if (!is.null(labels)) df$label <- labels
   if (!is.null(groups)) df$group <- groups
-  subtitle <- if (!anyNA(ve))
+  # 分散説明率は PCA の量である。MDS の軸に対して刷ると読者を誤らせるので、
+  # 配置が MDS のときは出さない。
+  subtitle <- if (identical(lay, "pca") && !anyNA(ve))
     sprintf("PC1: %.1f%%  PC2: %.1f%%", ve[1], ve[2]) else NULL
 
   p <- ggplot(df, aes(PC1, PC2, label = label)) +
@@ -426,7 +584,7 @@ plot_embedding_2d <- function(proj, labels = NULL, groups = NULL,
       max.overlaps  = 25
     ) +
     labs(title = title, subtitle = subtitle,
-         x = "PC1", y = "PC2", color = NULL) +
+         x = lab[1], y = lab[2], color = NULL) +
     theme_minimal(base_size = 13) +
     theme(
       plot.title       = element_text(face = "bold", size = 15),
@@ -434,8 +592,7 @@ plot_embedding_2d <- function(proj, labels = NULL, groups = NULL,
       panel.grid.minor = element_blank(),
       legend.position  = "right"
     )
-  print(p)
-  invisible(p)
+  p
 }
 
 #' 日英の意味空間を横並びで比較
@@ -471,8 +628,7 @@ plot_bilingual <- function(df_en, df_ja, ve_en, ve_ja,
       panel.grid.minor = element_blank(),
       strip.text       = element_text(size = 13, face = "bold")
     )
-  print(p)
-  invisible(p)
+  p
 }
 
 #' 類似度行列のヒートマップ
@@ -499,8 +655,7 @@ plot_similarity_heatmap <- function(sim_mat, order = rownames(sim_mat),
     theme(axis.text.x = element_text(angle = 45, hjust = 1, face = "bold"),
           axis.text.y = element_text(face = "bold"),
           plot.title  = element_text(face = "bold"))
-  print(p)
-  invisible(p)
+  p
 }
 
 
@@ -1305,14 +1460,24 @@ trajectory_stats <- function(emb, seg, axis = NULL) {
 #' どこに落ちるかが、順序が担っている情報の量である。局所的に一貫した
 #' 語りは、並べ替えた自分より短い距離しか動かないはずである。
 #'
+#' \code{stat = "far_mean"} は、再帰プロットが見せる構造をそのまま検定する。
+#' 語りの上で lag_min 段以上離れた対どうしの平均コサインを取り、順序を
+#' 並べ替えた分布と比べる。並べ替えても類似度の値の集合は変わらないので、
+#' 動くのは「どの対が近くに来るか」だけである。観測値が帰無より**高い**なら
+#' 前の話題への回帰、**低い**なら話題の転換である。plot_recurrence() で
+#' 目に付いたブロックが偶然かどうかは、この統計量で決める。
+#'
 #' @param emb    セグメントの埋め込み行列
 #' @param seg    as_segments() の契約を満たす表
 #' @param n_perm 並べ替え回数（既定 999）
-#' @param stat   評価する統計量（"path_length" / "step_mean" / "straightness"）
+#' @param stat   評価する統計量（"path_length" / "step_mean" / "straightness"
+#'   / "far_mean"）
+#' @param lag_min stat = "far_mean" で「離れている」とみなす最小の段差（既定 3）
 #' @return 文書ごとの data.frame(doc_id, n_seg, observed, null_mean, z, p)。
 #'   p は両側で、(#{|null - mean| >= |obs - mean|} + 1) / (n_perm + 1)。
 #' @export
-trajectory_null <- function(emb, seg, n_perm = 999, stat = "path_length") {
+trajectory_null <- function(emb, seg, n_perm = 999, stat = "path_length",
+                            lag_min = 3) {
   a <- .align_emb(emb, seg); emb <- a$emb; seg <- a$seg
   docs <- unique(seg$doc_id)
   do.call(rbind, lapply(docs, function(dd) {
@@ -1320,6 +1485,11 @@ trajectory_null <- function(emb, seg, n_perm = 999, stat = "path_length") {
     k <- k[order(seg$segid[k])]
     if (length(k) < 3) return(NULL)          # 3段未満は並べ替えの意味がない
     S <- cos_sim_matrix(emb[k, , drop = FALSE])
+    # far_mean は「離れた対」を語りの位置で定義するので、行列の外に
+    # 一度だけ作っておく。並べ替えるのは行列のほうである。
+    .up  <- upper.tri(S)
+    .far <- .up & abs(row(S) - col(S)) >= lag_min
+    if (identical(stat, "far_mean") && !any(.far)) return(NULL)
     path <- function(o) {
       st <- 1 - S[cbind(o[-length(o)], o[-1])]
       switch(stat,
@@ -1327,6 +1497,7 @@ trajectory_null <- function(emb, seg, n_perm = 999, stat = "path_length") {
              step_mean   = mean(st),
              straightness = { d <- 1 - S[o[1], o[length(o)]]
                               if (sum(st) > 0) d / sum(st) else NA_real_ },
+             far_mean    = { Q <- S[o, o]; mean(Q[.far]) },
              stop("unknown stat: ", stat))
     }
     obs  <- path(seq_along(k))
@@ -1394,10 +1565,15 @@ recurrence_stats <- function(emb, seg, rr = 0.05, lmin = 2) {
 
 #' 概念再帰プロット（Angus et al., 2012）
 #'
-#' セル (i, j) は**全次元**の埋め込み同士のコサイン類似度である。次元削減は
-#' 一切なく、両軸はセグメントの位置にすぎない。2次元投影が距離を歪める
-#' という問題 (Chari & Pachter, 2023) をそもそも踏まない唯一の表示である。
-#' 閾値は掛けない（Angus に倣い、Eckmann/Marwan の二値化はしない）。
+#' **分割した文書に対して最初に見るべき図である。** セル (i, j) は**全次元**の
+#' 埋め込み同士のコサイン類似度である。次元削減は一切なく、両軸はセグメントの
+#' 位置にすぎない。2次元投影が距離を歪めるという問題 (Chari & Pachter, 2023)
+#' をそもそも踏まない。plot_trajectory() と違い、読むときに幾何の但し書きが
+#' 要らない。閾値は掛けない（Angus に倣い、Eckmann/Marwan の二値化はしない）。
+#'
+#' 目で拾った構造は trajectory_null() に掛けること。手元の材料では、この図が
+#' 見せる話題の**転換**は段の順序の並べ替えに耐えたが、**回帰**は耐えなかった。
+#' どちらを論文に書くかを決める前に知っておくべき差である。
 #'
 #' 読み方: 対角付近のまとまり = 一つの話題が続く区間。対角から離れた
 #' まとまり = 前の話題への回帰。明るい縦筋 = その後ずっと参照され続ける
@@ -1412,6 +1588,7 @@ recurrence_stats <- function(emb, seg, rr = 0.05, lmin = 2) {
 #' @param probs  anchor = "quantile" のときの下側・上側確率
 #' @param title  図題
 #' @return ggplot（表示もする）
+#' @seealso [trajectory_null()], [plot_arc()], [recurrence_stats()]
 #' @export
 plot_recurrence <- function(emb, seg, doc = NULL,
                             anchor = c("quantile", "range"),
@@ -1445,16 +1622,17 @@ plot_recurrence <- function(emb, seg, doc = NULL,
     scale_fill_gradient2(low = "#3B82F6", mid = "white", high = "#EF4444",
                          midpoint = stats::median(off), limits = lim,
                          oob = scales::squish, name = "Cosine\nsimilarity") +
-    scale_y_reverse(expand = c(0, 0)) +
-    scale_x_continuous(expand = c(0, 0)) +
+    # 目盛りはすべてのセグメントに振る。既定の間引きだと本文一覧の番号と
+    # 突き合わせられない行が出る。
+    scale_y_reverse(expand = c(0, 0), breaks = seq_len(n)) +
+    scale_x_continuous(expand = c(0, 0), breaks = seq_len(n)) +
     coord_fixed() +
     labs(title = title %||% paste0("Conceptual recurrence: ", doc),
          x = "Segment", y = "Segment") +
     theme_minimal(base_size = 12) +
     theme(plot.title = element_text(face = "bold"),
           panel.grid = element_blank())
-  print(p)
-  invisible(p)
+  p
 }
 
 #' 意味の弧: セグメントごとの量を語りの位置に対して描く
@@ -1564,9 +1742,14 @@ plot_arc <- function(emb, seg, y = c("projection", "step", "forward_flow"),
                          aes(x = .data$xx, ymin = .data$lo, ymax = .data$hi,
                              group = .data$doc_id),
                          fill = "grey80", alpha = .6)
+  # 点は白抜きの丸に番号を入れる。軌跡の図と同じ書式にして、どちらの
+  # 表示でも同じ番号で本文一覧を引けるようにする。
   p <- p + geom_line(aes(color = .data$doc_id, group = .data$doc_id),
                      linewidth = .7, na.rm = TRUE) +
-    geom_point(aes(color = .data$doc_id), size = 1.6, na.rm = TRUE)
+    geom_point(aes(color = .data$doc_id), fill = "white", shape = 21,
+               size = 3.2, stroke = .5, na.rm = TRUE) +
+    geom_text(aes(label = .data$segid), size = 1.9, colour = "grey15",
+              na.rm = TRUE)
   if (isTRUE(smooth) && nrow(df) > 6)
     p <- p + geom_smooth(aes(group = .data$doc_id), method = "loess",
                          se = FALSE, linewidth = .5, linetype = "22",
@@ -1589,45 +1772,147 @@ plot_arc <- function(emb, seg, y = c("projection", "step", "forward_flow"),
   # 帯は文書ごとに違う。重ねると鋸歯状の意味のない形になるので面を分ける。
   if (!is.null(band) && length(docs) > 1)
     p <- p + facet_wrap(~ doc_id, scales = "free_x")
-  print(p)
-  invisible(p)
+  p
+}
+
+.layout_2d <- function(M, layout = c("mds", "pca"), axis = NULL) {
+  layout <- match.arg(layout)
+  v <- if (is.null(axis)) NULL
+       else as.numeric(scale(M, scale = FALSE) %*% (axis / sqrt(sum(axis^2))))
+  if (layout == "mds" && nrow(M) >= 4 &&
+      requireNamespace("MASS", quietly = TRUE)) {
+    D  <- stats::dist(M)
+    xy <- if (min(D) > 0)
+      try(suppressMessages(MASS::isoMDS(D, k = 2, trace = FALSE)), silent = TRUE)
+      else structure("degenerate", class = "try-error")
+    if (!inherits(xy, "try-error")) {
+      P <- xy$points
+      if (!is.null(v)) P <- .rotate_to(P, v)
+      return(structure(P, layout = "mds", stress = xy$stress / 100,
+                       ve = NA_real_))
+    }
+  }
+  pc <- stats::prcomp(M)
+  P  <- pc$x[, 1:2, drop = FALSE]
+  if (!is.null(v)) P <- .rotate_to(P, v)
+  structure(P, layout = "pca", stress = NA_real_,
+            ve = sum(pc$sdev[1:2]^2) / sum(pc$sdev^2))
+}
+
+.rotate_to <- function(xy, v) {
+  Y  <- scale(xy, scale = FALSE)
+  th <- atan2(sum(v * Y[, 2]), sum(v * Y[, 1]))
+  Y %*% matrix(c(cos(th), sin(th), -sin(th), cos(th)), 2)
+}
+
+.ax_lab <- function(layout, k)
+  if (identical(layout, "pca")) paste0("PC", k) else paste("Dimension", k)
+
+# ── 2次元配置 ───────────────────────────────────────────────
+# PCA は分散を最大化するのであって距離の順位を保たない。次元数が点数を
+# 大きく超える埋め込みでは第2成分までに乗る分散がわずかで、平面は点を
+# 細い帯に潰す。非計量MDS は順位そのものを目的関数にするので、同じ
+# 2次元でも順位相関が上がる（デモ15の169セグメントで .54 → .84、
+# 等方の点に同じ手続きを当てた帰無は .33 と .56）。既定を MDS にする。
+#
+# 回転は距離も角度も変えないので忠実さには効かない。効くのは軸の解釈で
+# ある。axis を渡すと、その方向に最も沿う向きへ配置を回す——因子分析の
+# 回転が負荷量を解釈可能にするのと同じ操作を、点配置に対して行う。
+.rotate_to <- function(xy, v) {
+  Y  <- scale(xy, scale = FALSE)
+  th <- atan2(sum(v * Y[, 2]), sum(v * Y[, 1]))
+  Y %*% matrix(c(cos(th), sin(th), -sin(th), cos(th)), 2)
+}
+
+.layout_kd <- function(M, k, layout = c("pca", "mds")) {
+  layout <- match.arg(layout)
+  if (layout == "mds" && nrow(M) > k + 1 &&
+      requireNamespace("MASS", quietly = TRUE)) {
+    D <- stats::dist(M)
+    if (min(D) > 0) {
+      fit <- try(suppressMessages(MASS::isoMDS(D, k = k, trace = FALSE)),
+                 silent = TRUE)
+      if (!inherits(fit, "try-error")) return(fit$points)
+    }
+  }
+  stats::prcomp(M)$x[, seq_len(k), drop = FALSE]
 }
 
 #' 射影の忠実さを測る（矢印の図を信じてよいかの診断）
 #'
 #' 2次元への射影は距離を歪める。どれだけ歪むかは場合による——測れば済む。
 #' 全次元でのペア距離と、平面上でのペア距離の順位相関（Shepard 相関）を
-#' 文書ごとに返す。相関が高ければ、その平面図の「近い／遠い」は空間の
-#' 「近い／遠い」を概ね反映している。
+#' 文書ごとに返す。
 #'
-#' 実測の目安（デモ15、5-8セグメントの逐語）: 1文書ずつ射影すれば
-#' PC1+PC2 が分散の 56%、順位相関の中央値 .87。40名を一つの共通射影に
-#' 載せると 12% と .16 まで落ちる。**軌跡の地図は文書ごとに描くこと。**
+#' **生の値だけを見てはいけない。** 分散説明率も Shepard 相関も、
+#' セグメント数 n が小さいほど機械的に高くなる。中心化後のランクは
+#' n-1 なので、n=3 なら平面は常に厳密（分散 100%、相関 1.00）、
+#' n=4 でも等方な点で 2/(n-1) = 67% が出る。そこで同じ n を全文書の
+#' プールから無作為抽出した帰無を併せて返す。読むべきは観測と帰無の差で
+#' あって、観測の絶対値ではない。
+#'
+#' 実測（デモ15、40名の逐語、中央値4セグメント）では、文書ごとの射影は
+#' 分散 .70／相関 .92 を示すが、帰無は .74／.86 で、観測が帰無を上回った
+#' 文書は 35 中 16 と偶然の範囲だった。他人のセグメントを寄せ集めても
+#' 同じ数字が出る。一方、共通射影は分散 .14 に対し等方期待 .01 で、
+#' 実質的な構造はこちらにある。**比較したい文書が複数あるなら
+#' scope = "shared" を使うこと。**
 #'
 #' @param emb   セグメントの埋め込み行列
 #' @param seg   as_segments() の契約を満たす表
-#' @param scope "document"（文書ごとに射影）/ "shared"（全体で一つの射影）
-#' @return 文書ごとの data.frame(doc_id, n_seg, var_2d, shepard)
+#' @param scope "document"（文書ごとに配置）/ "shared"（全体で一つの配置）
+#' @param layout "mds"（既定・非計量MDS）/ "pca"。MDS は距離の順位を目的関数に
+#'   するので、次元数が点数を大きく超える埋め込みでは PCA より平面が忠実に
+#'   なる。var_2d は PCA でしか定義されない（MDS には分散説明率がない）ので、
+#'   MDS では NA が入る。忠実さは layout によらず shepard で読む。
+#' @param null_reps 帰無の反復数。0 で帰無を計算しない（既定 200）
+#' @return 文書ごとの data.frame(doc_id, n_seg, layout, var_2d, var_null,
+#'   shepard, shepard_null)
 #' @export
-trajectory_fidelity <- function(emb, seg, scope = c("document", "shared")) {
-  scope <- match.arg(scope)
+trajectory_fidelity <- function(emb, seg, scope = c("document", "shared"),
+                                layout = c("mds", "pca"), null_reps = 200) {
+  scope <- match.arg(scope); layout <- match.arg(layout)
   a <- .align_emb(emb, seg); emb <- a$emb; seg <- a$seg
-  shared_pc <- if (scope == "shared") stats::prcomp(emb) else NULL
+  # 共通配置は一度だけ解く。文書ごとに解き直すとパネルが比較できない。
+  shared <- if (scope == "shared") .layout_2d(emb, layout) else NULL
+  N <- nrow(emb)
+
+  # 1組の点について、平面の忠実さを返す。共通配置のときは基底が固定なので、
+  # 解き直さずその行を取り出す。
+  .fid <- function(k) {
+    M <- emb[k, , drop = FALSE]
+    if (is.null(shared)) {
+      xy <- .layout_2d(M, layout)
+      ve <- attr(xy, "ve")
+    } else {
+      xy <- shared[k, , drop = FALSE]
+      ve <- attr(shared, "ve")
+    }
+    # コサイン距離 1-s と Euclid 距離 sqrt(2(1-s)) は単位ベクトルでは
+    # 単調に対応するので、順位相関はどちらで測っても同じ。
+    c(ve, suppressWarnings(stats::cor(
+      stats::as.dist(1 - cos_sim_matrix(M)), stats::dist(xy),
+      method = "spearman")))
+  }
+
   do.call(rbind, lapply(unique(seg$doc_id), function(dd) {
     k <- which(seg$doc_id == dd); k <- k[order(seg$segid[k])]
     if (length(k) < 3) return(NULL)
-    M <- emb[k, , drop = FALSE]
-    if (is.null(shared_pc)) {
-      pc <- stats::prcomp(M); xy <- pc$x[, 1:2, drop = FALSE]
-      ve <- sum(pc$sdev[1:2]^2) / sum(pc$sdev^2)
-    } else {
-      xy <- shared_pc$x[k, 1:2, drop = FALSE]
-      ve <- sum(shared_pc$sdev[1:2]^2) / sum(shared_pc$sdev^2)
+    o <- .fid(k)
+    # 帰無: 同じ本数を全文書のプールから無作為に取る。小さい n で
+    # 説明率と相関が機械的に上がる分を、そのまま測って差し引けるようにする。
+    nl <- c(NA_real_, NA_real_)
+    if (null_reps > 0 && N > length(k)) {
+      r <- vapply(seq_len(null_reps),
+                  function(i) .fid(sample.int(N, length(k))), numeric(2))
+      nl <- rowMeans(r, na.rm = TRUE)
+      # 共通配置では平面は雲全体が決めるので、再抽出しても説明率は動かない。
+      # 比べるべき相手は等方な点の期待値のほう（PCA のときだけ定義される）。
+      if (!is.null(shared) && layout == "pca") nl[1] <- min(1, 2 / (N - 1))
     }
-    d_full <- stats::as.dist(1 - cos_sim_matrix(M))
-    data.frame(doc_id = dd, n_seg = length(k), var_2d = round(ve, 3),
-               shepard = round(suppressWarnings(
-                 stats::cor(d_full, stats::dist(xy), method = "spearman")), 3),
+    data.frame(doc_id = dd, n_seg = length(k), layout = layout,
+               var_2d = round(o[1], 3), var_null = round(nl[1], 3),
+               shepard = round(o[2], 3), shepard_null = round(nl[2], 3),
                stringsAsFactors = FALSE)
   }))
 }
@@ -1637,67 +1922,133 @@ trajectory_fidelity <- function(emb, seg, scope = c("document", "shared")) {
 #' 発言の順に点を結び、矢印で向きを示す。これは「どの順に、どちらへ動いたか」
 #' を見るための図である。
 #'
+#' **最初に見る図ではない。** 投影を経ない plot_recurrence() と plot_arc() を
+#' 先に見ること。3つの表示のうち、読みながら幾何の但し書きを付けて回らねば
+#' ならないのはこれだけである。但し書きの要る図は、データの第一印象を作る
+#' 道具として劣る。
+#'
 #' **矢印が担う順序は射影で歪まない。歪むのは距離と角度である。**
 #' したがって「3番目でいったん戻って、そこから一方向に進んだ」という読みは
 #' この図から取ってよい。「Aさんのほうが長く動いた」という読みは取っては
 #' ならない——それは全次元で測る量で、trajectory_stats() が返す。
-#' 図の副題に、その射影がどれだけ距離を保っているか（Shepard 順位相関）を
-#' 出すので、目盛りとして使ってよいかは毎回そこで判断できる。
+#' 図の副題に、その射影がどれだけ距離を保っているか（Shepard 順位相関）と、
+#' 同じ本数を無作為に取ったときの帰無を並べて出す。読むのは差のほうである。
 #'
-#' 射影は既定で**文書ごと**に計算する。複数の逐語を一つの共通平面に載せると
-#' 忠実さが激しく落ちるため（実測で順位相関 .87 → .16）、scope = "shared"
-#' は明示的に選んだときだけ使われ、忠実さが低ければ警告する。
+#' **距離は読めなくはない。読み方の問題である。** 3社とも単位ノルムの
+#' ベクトルを返すので、全次元での Euclid 距離はコサイン類似度 s に
+#' d = sqrt(2(1-s)) で厳密に対応する（順位相関は正確に -1）。中心化は
+#' 平行移動なので距離を変えない。つまり平面上の遠近は、他のすべての分析が
+#' 使っているコサインの順序をそのまま表している。ただし目盛りは非線形で、
+#' s が 1 に近いほど間隔が伸びる（s = .95 付近では .05 の差が d を .13、
+#' s = .50 付近では .05 と、2.7 倍の開きがある）。似た者どうしの差は
+#' 誇張され、離れた者どうしの差は圧縮される。順位は読んでよく、
+#' 比は読んではならない。
+#'
+#' 射影は既定で**文書ごと**に計算する。ただし n が小さいと説明率も順位相関も
+#' 機械的に上がるので（n = 3 なら常に厳密）、生の値を忠実さの証拠と読んでは
+#' ならない。複数の文書を見比べるなら scope = "shared" を使う。共通射影は
+#' 基底も軸の範囲もプール全体から決めるので、1文書ずつ描いて並べたパネルが
+#' そのまま比較できる。詳しくは trajectory_fidelity() を参照。
 #'
 #' @param emb    セグメントの埋め込み行列
 #' @param seg    as_segments() の契約を満たす表
 #' @param doc    描く文書。NULL なら全文書（scope に従う）。
-#' @param scope  "document"（既定・文書ごとの射影）/ "shared"（共通の射影）
+#' @param scope  "document"（既定・文書ごとの配置）/ "shared"（共通の配置）
+#' @param layout "mds"（既定・非計量MDS）/ "pca"。MDS は距離の順位を目的関数に
+#'   するので、次元数が点数を大きく超える埋め込みでは平面が忠実になる。
+#'   ただし1文書ぶんの数点に当てても意味はない（4点は2次元に厳密に置ける）。
+#'   比較したい文書が複数あるなら scope = "shared" と併せて使うこと。
+#' @param zoom  scope = "shared" のとき、軸の範囲を描く文書に合わせる（既定
+#'   FALSE = プール全体）。基底は共通のままなので位置の意味は変わらないが、
+#'   範囲が文書ごとに違うので、パネル間で位置を読み比べることはできなくなる。
+#'   動きの小さい文書が一点に潰れて形が読めないときに使う。
+#' @param axis  事前指定の方向（埋め込みと同じ長さの数値ベクトル。高低アンカーの
+#'   差ベクトルなど）。渡すと、その方向が x 軸に最も沿う向きへ配置を回す。
+#'   回転は距離も角度も変えないので忠実さには影響せず、軸の解釈だけが変わる。
+#'   プロバイダ間で符号や向きが揃わない問題も、これで解消する。
 #' @param arrows 進行方向の矢印を描く（既定 TRUE）
 #' @param label  セグメント番号を書く（既定 TRUE）
+#' @param text    セグメント本文を図の右に並記する（既定 FALSE）。点と語りの
+#'   対応を追えるようになるが、文書は一つに限られ、セグメントが text_max を
+#'   超えると収まらないので黙って降りる。patchwork が要る。
+#' @param text_wrap 並記する本文の折り返し幅（文字数）
+#' @param text_max  並記に応じるセグメント数の上限（既定 8）
 #' @param title  図題
+#' @param compact 小さく描く（並置用に文字と点を縮め、副題を1行にする）
+#' @param null_reps 副題に出す帰無の反復数。0 で計算しない（既定 200）
+#' @param fidelity 忠実さを副題に刷る（既定 TRUE）。共通射影のパネルを並べる
+#'   ときは同じ数字が繰り返されるので、FALSE にして図の注に一度書くとよい。
 #' @return ggplot（表示もする）
 #' @seealso [trajectory_fidelity()], [trajectory_stats()], [plot_recurrence()]
 #' @export
 plot_trajectory <- function(emb, seg, doc = NULL,
                             scope = c("document", "shared"),
-                            arrows = TRUE, label = TRUE, title = NULL) {
-  scope <- match.arg(scope)
+                            layout = c("mds", "pca"), axis = NULL,
+                            zoom = FALSE,
+                            arrows = TRUE, label = TRUE, text = FALSE,
+                            text_wrap = 34, text_max = 8, title = NULL,
+                            compact = FALSE, null_reps = 200,
+                            fidelity = TRUE) {
+  scope <- match.arg(scope); layout <- match.arg(layout)
   a <- .align_emb(emb, seg); emb <- a$emb; seg <- a$seg
+  # 共通射影の基底も軸の範囲も、描く文書ではなくプール全体から決める。
+  # そうしないと、1文書ずつ描いて並べたパネル同士が比較できない。
+  emb_all <- emb; seg_all <- seg; idx <- seq_len(nrow(emb))
   if (!is.null(doc)) {
     keep <- seg$doc_id %in% doc
     if (!any(keep)) stop("plot_trajectory(): no document named '",
                          paste(doc, collapse = "', '"), "'.", call. = FALSE)
+    idx <- which(keep)
     emb <- emb[keep, , drop = FALSE]; seg <- seg[keep, , drop = FALSE]
   }
   docs <- unique(seg$doc_id)
   if (length(docs) > 1 && scope == "document") scope <- "shared"
 
-  fid <- trajectory_fidelity(emb, seg, scope = scope)
-  if (scope == "shared" && length(docs) > 1) {
-    med <- stats::median(fid$shepard, na.rm = TRUE)
-    if (!is.na(med) && med < .5)
-      warning("plot_trajectory(): on a shared projection these documents ",
-              "keep only a rank correlation of ", sprintf("%.2f", med),
-              " with their full-space distances -- the map's near/far is ",
-              "close to meaningless. Draw one document at a time (doc = ), ",
-              "which in our checks recovers about .87.", call. = FALSE)
+  fid_pool <- trajectory_fidelity(emb_all, seg_all, scope = scope,
+                                  layout = layout, null_reps = null_reps)
+  fid <- fid_pool[fid_pool$doc_id %in% docs, , drop = FALSE]
+  XY  <- if (scope == "shared") .layout_2d(emb_all, layout, axis)
+
+  # 説明率も順位相関も n が小さいほど機械的に上がる。プール全体で帰無と
+  # 比べ、差がないなら地図の遠近を読ませないよう呼び出し側に伝える。
+  if (scope == "document" && any(!is.na(fid_pool$shepard_null))) {
+    win <- mean(fid_pool$shepard > fid_pool$shepard_null, na.rm = TRUE)
+    if (!is.na(win) && win <= .6)
+      warning("plot_trajectory(): a per-document plane keeps no more rank ",
+              "order than the same number of segments drawn at random from ",
+              "the pool (observed above null in ", round(100 * win),
+              "% of documents). With a median of ",
+              stats::median(fid_pool$n_seg), " segments the fidelity numbers ",
+              "are mostly a function of n. Read the order, not the ",
+              "distances -- and use scope = \"shared\" for panels that can ",
+              "be compared with one another. plot_recurrence() and plot_arc() ",
+              "show the same document with no projection at all.", call. = FALSE)
   }
 
-  # 射影: 文書ごと（既定）か、全体で一つか
+  # 射影: 文書ごと（既定）か、プール全体で一つか
   d <- do.call(rbind, lapply(docs, function(dd) {
     k <- which(seg$doc_id == dd); k <- k[order(seg$segid[k])]
-    xy <- if (scope == "document") stats::prcomp(emb[k, , drop = FALSE])$x[, 1:2]
-          else stats::prcomp(emb)$x[k, 1:2, drop = FALSE]
+    xy <- if (scope == "document") .layout_2d(emb[k, , drop = FALSE], layout, axis)
+          else XY[idx[k], , drop = FALSE]
     data.frame(doc_id = dd, segid = seg$segid[k],
                PC1 = xy[, 1], PC2 = xy[, 2], stringsAsFactors = FALSE)
   }))
 
+  .p2 <- function(x) sub("^0[.]", ".", sprintf("%.2f", x))
+  # 共通射影の平面はプール全体が決めるので、忠実さもプール全体で報告する。
+  # 1文書ぶんの数点で測った順位相関は、共通基底のもとでは揺らぎでしかない。
+  .f  <- if (scope == "shared") fid_pool else fid
+  .vo <- 100 * stats::median(.f$var_2d, na.rm = TRUE)
+  .vn <- 100 * stats::median(.f$var_null, na.rm = TRUE)
+  .so <- stats::median(.f$shepard, na.rm = TRUE)
+  .sn <- stats::median(.f$shepard_null, na.rm = TRUE)
   sub <- paste(strwrap(sprintf(
-    "%s projection. PC1 + PC2 hold %.0f%% of the variance, and distances on the page keep a rank correlation of %s with the distances actually measured. The arrows show the order, which projection preserves exactly; their lengths are not the distances travelled.",
-    if (scope == "document") "Per-document" else "Shared",
-    100 * stats::median(fid$var_2d, na.rm = TRUE),
-    sub("^0[.]", ".", sprintf("%.2f", stats::median(fid$shepard, na.rm = TRUE)))),
-    width = 72), collapse = "\n")
+    "%s projection. PC1 + PC2 hold %.0f%% of the variance, against %.0f%% for %s, and distances on the page keep a rank correlation of %s with the distances actually measured, against %s for the same segments drawn at random. Because the vectors are unit length, that measured distance is sqrt(2(1 - s)) in the cosine similarity s every other analysis here uses: same order, compressed scale. The arrows show the order, which projection preserves exactly; their lengths are not the distances travelled.",
+    if (scope == "document") "Per-document" else "Shared", .vo, .vn,
+    if (scope == "document") "segments drawn at random" else "isotropic points",
+    .p2(.so), .p2(.sn)), width = 72), collapse = "\n")
+  sub_short <- sprintf("PC1 + PC2 = %d%% (null %d%%), rank corr. = %s (null %s)",
+                       round(.vo), round(.vn), .p2(.so), .p2(.sn))
 
   # 1段ごとに矢印を引く。geom_path の arrow は経路の最後にしか付かない。
   seg_df <- do.call(rbind, lapply(docs, function(dd) {
@@ -1716,7 +2067,41 @@ plot_trajectory <- function(emb, seg, doc = NULL,
     d$role[k[1]] <- "start"; d$role[k[length(k)]] <- "end"
   }
 
-  p <- ggplot(d, aes(.data$PC1, .data$PC2))
+  # 原点を通る軸を薄く敷く。主成分は中心化されているので、原点は
+  # その文書のセグメントの重心であり、内外の別が読めるようになる。
+  # 目盛りは両軸共通。coord_equal() だけでは、刻みが軸ごとに違うと
+  # 1:1 に見えない。
+  # 共通配置では軸の範囲もプール全体から取るのが既定。パネルどうしで
+  # 位置を読み比べられる代わりに、動きの小さい文書は一点に潰れる。
+  # zoom = TRUE は基底を共有したまま範囲だけ描く文書に合わせる。形は
+  # 読めるようになるが、パネル間で位置は読めなくなる（目盛りで補う）。
+  if (scope == "shared" && !isTRUE(zoom)) {
+    .xl <- .yl <- range(XY, na.rm = TRUE)               # 共通の枠
+  } else {
+    # 描く点に枠を合わせる。x と y をまとめて一つの範囲にすると、
+    # 広いほうの軸に合わせて狭いほうが引き伸ばされ、点のない側に
+    # 枠が空く。1:1 を保つため幅は共通にし、中心は軸ごとに取る。
+    .xr <- range(d$PC1, na.rm = TRUE); .yr <- range(d$PC2, na.rm = TRUE)
+    .sp <- max(diff(.xr), diff(.yr), .Machine$double.eps) * 1.18
+    .xl <- mean(.xr) + c(-.5, .5) * .sp
+    .yl <- mean(.yr) + c(-.5, .5) * .sp
+  }
+  .rng <- range(c(.xl, .yl))
+  .stp <- signif(max(diff(.xl), .Machine$double.eps) / 4, 1)
+  .brk <- seq(floor(.rng[1] / .stp) * .stp, ceiling(.rng[2] / .stp) * .stp, .stp)
+
+  p <- ggplot(d, aes(.data$PC1, .data$PC2)) +
+    geom_hline(yintercept = 0, colour = "grey88", linewidth = .3) +
+    geom_vline(xintercept = 0, colour = "grey88", linewidth = .3)
+  # 矢印の頭が点の下に隠れないよう、線分を点の手前で止める
+  if (!is.null(seg_df) && nrow(seg_df)) {
+    dx <- seg_df$xend - seg_df$x; dy <- seg_df$yend - seg_df$y
+    L  <- sqrt(dx^2 + dy^2); L[L == 0] <- 1
+    sh <- .055 * mean(c(diff(range(d$PC1)), diff(range(d$PC2))))
+    k  <- pmin(sh / L, .40)
+    seg_df$x    <- seg_df$x    + dx * k; seg_df$y    <- seg_df$y    + dy * k
+    seg_df$xend <- seg_df$xend - dx * k; seg_df$yend <- seg_df$yend - dy * k
+  }
   if (!is.null(seg_df)) {
     p <- p + geom_segment(
       data = seg_df, inherit.aes = FALSE,
@@ -1727,30 +2112,88 @@ plot_trajectory <- function(emb, seg, doc = NULL,
         arrow(length = unit(.22, "cm"), type = "closed", angle = 22) else NULL,
       show.legend = FALSE)
   }
-  p <- p + geom_point(aes(colour = .data$doc_id, shape = .data$role,
-                          fill = .data$role), size = 2.4, stroke = .7) +
-    scale_shape_manual(values = c(start = 21, mid = 19, end = 22),
-                       breaks = c("start", "end"),
-                       labels = c("first segment", "last segment"),
-                       name = NULL) +
-    scale_fill_manual(values = c(start = "white", mid = NA, end = "white"),
-                      guide = "none") +
+  # 番号は点の外ではなく中に置く。矢印と番号があれば始点・終点は自明なので、
+  # 最後だけ四角にして残りは丸にする。塗りは白で、線が下を通っても読める。
+  psz <- if (isTRUE(compact)) 3.4 else 4.6
+  p <- p + geom_point(aes(colour = .data$doc_id, shape = .data$role),
+                      fill = "white", size = psz, stroke = .5) +
+    scale_shape_manual(values = c(start = 21, mid = 21, end = 22),
+                       guide = "none") +
     labs(title = title %||% "Trajectory through semantic space",
-         subtitle = sub, x = "PC1", y = "PC2", colour = NULL) +
-    theme_minimal(base_size = 12) +
+         subtitle = if (!isTRUE(fidelity)) NULL
+                    else if (isTRUE(compact)) sub_short else sub,
+         x = if (is.null(axis)) .ax_lab(layout, 1) else "Anchor axis",
+         y = .ax_lab(layout, 2), colour = NULL) +
+    # 1:1 であることが目でわかるよう、両軸の刻みを揃える。
+    scale_x_continuous(breaks = .brk) +
+    scale_y_continuous(breaks = .brk) +
+    coord_equal(xlim = .xl, ylim = .yl) +
+    theme_minimal(base_size = if (isTRUE(compact)) 7 else 12) +
     theme(plot.title = element_text(face = "bold"),
           plot.subtitle = element_text(size = 7.5, colour = "grey35",
                                        lineheight = 1.15),
-          panel.grid.minor = element_blank(),
-          legend.position = "bottom", legend.box = "horizontal") +
-    guides(colour = if (length(docs) > 1) guide_legend(order = 2) else "none")
+          panel.grid = element_blank(),
+          legend.position = if (isTRUE(compact)) "none" else "bottom",
+          legend.box = "horizontal") +
+    guides(colour = if (length(docs) > 1 && !isTRUE(compact))
+                      guide_legend(order = 2) else "none",
+           shape  = if (isTRUE(compact)) "none" else ggplot2::guide_legend())
   if (isTRUE(label))
-    p <- p + geom_text_repel(aes(label = .data$segid), size = 3,
-                             box.padding = .35, segment.color = "grey70",
-                             max.overlaps = 20, seed = 1)
-  if (length(docs) > 1) p <- p + facet_wrap(~ doc_id, scales = "free")
-  print(p)
-  invisible(p)
+    p <- p + geom_text(aes(label = .data$segid),
+                       size = if (isTRUE(compact)) 2.0 else 2.7,
+                       colour = "grey15")
+  if (length(docs) > 1)
+    p <- p + facet_wrap(~ doc_id,
+                        scales = if (scope == "shared") "fixed" else "free")
+
+  # セグメント本文の並記。番号だけの図では点と語りの対応が追えないが、
+  # 本文は長さも数も文書しだいなので、収まらないときは黙って降りる。
+  if (isTRUE(text)) {
+    if (length(docs) > 1) {
+      warning("plot_trajectory(): text = TRUE draws the segments beside one ",
+              "document only; several were given, so the text is omitted. ",
+              "Pass doc = to choose one.", call. = FALSE)
+    } else if (nrow(d) > text_max) {
+      warning("plot_trajectory(): ", nrow(d), " segments is more than ",
+              "text_max = ", text_max, ", so the text is omitted; the panel ",
+              "would not hold it. Raise text_max to override.", call. = FALSE)
+    } else if (!requireNamespace("patchwork", quietly = TRUE)) {
+      warning("plot_trajectory(): text = TRUE needs the patchwork package.",
+              call. = FALSE)
+    } else {
+      zz  <- d[order(d$segid), ]
+      # 本文は座標計算で落ちているので seg から引き直す
+      key <- paste(zz$doc_id, zz$segid)
+      src <- as.data.frame(seg)
+      txt <- src$text[match(key, paste(src$doc_id, src$segid))]
+      wr  <- vapply(txt, function(x)
+                    paste(strwrap(x, text_wrap), collapse = "\n"), character(1))
+      # 縦位置は折り返した行数に比例させる。等間隔だと、1行の断片も5行の
+      # 断片も同じ幅の枠を取るので、短い側に空きが余り長い側は隣にかかる。
+      # 行数ぶんの高さに項目間の一定の空きを足して積み上げれば、余白は
+      # 出力の高さに応じて一様に伸縮し、重なりは高さ不足のときだけ起きる。
+      nl  <- vapply(strsplit(wr, "\n", fixed = TRUE), length, integer(1))
+      gap <- 1.2
+      top <- cumsum(c(0, utils::head(nl + gap, -1)))
+      lbl <- data.frame(i = zz$segid, y = -(top + (nl - 1) / 2),
+                        txt = unname(wr), stringsAsFactors = FALSE)
+      side <- ggplot(lbl, aes(0, .data$y)) +
+        geom_text(aes(label = .data$i), hjust = 0, size = 2.2,
+                  fontface = "bold") +
+        geom_text(aes(x = .07, label = .data$txt), hjust = 0, size = 1.9,
+                  lineheight = .95, vjust = .5) +
+        scale_x_continuous(limits = c(-.02, .92)) +
+        # 目盛りの範囲は中心位置ではなく、字が実際に占める上端と下端で
+        # とる。中心だけで取ると、最初と最後の項目の折り返し行が枠の外に
+        # 出て切れる。
+        scale_y_continuous(
+          limits = c(-(top[length(top)] + nl[length(nl)] - 1) - .6, .6),
+          expand = expansion(mult = c(.02, .02))) +
+        theme_void()
+      p <- patchwork::wrap_plots(p, side, widths = c(1, 1.25))
+    }
+  }
+  p
 }
 
 #' 2次元投影上のセグメント配置（非推奨。plot_trajectory() を使うこと）
@@ -1821,6 +2264,5 @@ plot_trajectories <- function(df, person_col = "person",
     theme_minimal(base_size = 13) +
     theme(plot.title = element_text(face = "bold"),
           panel.grid.minor = element_blank())
-  print(p)
-  invisible(p)
+  p
 }

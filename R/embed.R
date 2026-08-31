@@ -23,7 +23,8 @@
 # デフォルトモデル（2026-07-30 に全プロバイダで生存確認済み）:
 #   gemini : gemini-embedding-001    3072次元
 #            ※ 旧 text-embedding-004 / embedding-001 は廃止済み（404）
-#   voyage : voyage-multilingual-2   1024次元
+#   voyage : voyage-4                1024次元
+#            ※ 旧 voyage-multilingual-2 は legacy 扱い
 #   openai : text-embedding-3-small  1536次元
 #
 # レート制限・一時的エラーは httr2::req_retry() の指数バックオフで
@@ -41,9 +42,49 @@
 # 各プロバイダのデフォルトモデル
 .default_models <- c(
   gemini = "gemini-embedding-001",
-  voyage = "voyage-multilingual-2",
+  voyage = "voyage-4",
   openai = "text-embedding-3-small"
 )
+
+#' Where `embed()` keeps its cache
+#'
+#' Returns the path of the RDS file that [embed()] reads and writes for a given
+#' provider, model and set of request options. Request options that change the
+#' returned vector (Gemini's `task_type`, Voyage's `input_type`, an explicit
+#' output dimensionality) are part of the file name, so one provider can hold
+#' several caches at once. Use this rather than assembling the name yourself:
+#' a script that guessed `"<provider>_<model>.rds"` silently missed the Gemini
+#' cache, which carries a task-type suffix, and skipped the cells that needed it.
+#'
+#' @param provider One of `"gemini"`, `"openai"`, `"voyage"`.
+#' @param model Model identifier; the provider default when `NULL`.
+#' @param cache_dir Directory holding the cache files.
+#' @param ... Request options, as passed to [embed()].
+#' @return A file path. The file need not exist.
+#' @export
+cache_path <- function(provider, model = NULL,
+                       cache_dir = file.path("output", "embed_cache"), ...) {
+  provider <- match.arg(provider, c("gemini", "openai", "voyage"))
+  if (is.null(model)) model <- .default_models[[provider]]
+  fn <- switch(provider, gemini = .embed_gemini,
+                         openai = .embed_openai, voyage = .embed_voyage)
+  .dots <- list(...)
+  nm <- intersect(names(formals(fn)), c("dims", "task_type", "input_type"))
+  opts <- lapply(nm, function(k)
+    if (k %in% names(.dots)) .dots[[k]] else eval(formals(fn)[[k]]))
+  names(opts) <- nm
+  file.path(cache_dir, paste0(provider, "_",
+            gsub("[^A-Za-z0-9._-]", "_", model), .cache_sig(opts), ".rds"))
+}
+
+# 鍵の接尾辞。NULL は「そのパラメータを送らない」を意味するので落とす。
+.cache_sig <- function(opts) {
+  opts <- opts[!vapply(opts, is.null, logical(1))]
+  if (length(opts) == 0) return("")
+  paste0("_", paste(vapply(names(opts), function(k)
+    paste0(substr(k, 1, 3), gsub("[^A-Za-z0-9]", "", as.character(opts[[k]]))),
+    character(1)), collapse = "-"))
+}
 
 # HTTPエラーを初心者にも分かる言葉に翻訳して停止する
 # （リトライは req_retry が済ませた後なので、ここに来た429は「使い切り」）
@@ -160,6 +201,23 @@
 #'   (\code{GEMINI_API_KEY}, \code{VOYAGE_API_KEY}, \code{OPENAI_API_KEY}),
 #'   normally stored in \code{~/.Renviron}.
 #' @param cache Reuse and store previously fetched embeddings (default TRUE).
+#'   One RDS file per provider, model, and set of vector-changing request
+#'   options; within a file, one entry per text.
+#'
+#'   The cache key is built from the \emph{resolved} options, not from the
+#'   arguments the caller typed. \code{embed(x, provider = "gemini")} and
+#'   \code{embed(x, provider = "gemini", task_type = "SEMANTIC_SIMILARITY")}
+#'   therefore share a file, because they send the same request; an option
+#'   left at \code{NULL} is not sent and does not enter the key. The
+#'   alternative --- keying on what the caller passed --- looks equivalent and
+#'   is not: change a default and every call that relies on it keeps hitting
+#'   the old file, so vectors fetched under the previous condition are returned
+#'   silently under a key that now names a different one. Nothing errors, and
+#'   nothing in the returned matrix looks wrong.
+#'
+#'   A consequence worth knowing when you rerun someone's code: with
+#'   \code{cache = TRUE} you get their cache, not the endpoint. Delete the
+#'   file, or pass \code{refresh = TRUE}, to reach the API.
 #' @param refresh Ignore cached entries and fetch again, overwriting them
 #'   (default FALSE). Useful after a provider updates a model.
 #' @param cache_dir Directory holding the cache files.
@@ -173,16 +231,29 @@
 #'   (Voyage). Options that change the returned vectors are given their own
 #'   cache file automatically.
 #'
-#'   One default is not neutral and is worth knowing about. For Voyage,
-#'   \code{input_type} defaults to \code{"document"}, which makes the endpoint
-#'   prepend a retrieval instruction to each text before encoding it; Gemini's
-#'   \code{task_type} and OpenAI's \code{dimensions} are left unset, so those
-#'   two encode the string as given. The instruction is not cosmetic: on the
-#'   Big Five items the two Voyage spaces agree with each other at Mantel
-#'   \eqn{r_M = .86}, and clustering agreement with the theoretical factors
-#'   rises from .26 to .36 when it is removed. Pass \code{input_type = NULL}
-#'   to send no instruction, and state whichever you used when you report a
-#'   cross-provider comparison.
+#'   The defaults are set so that the three providers are as close to a common
+#'   condition as their APIs allow, because every statistic in this package
+#'   rests on a cosine similarity matrix and is therefore a symmetric task.
+#'   They are not the providers' own defaults in every case.
+#'
+#'   For Gemini, \code{task_type} defaults to \code{"SEMANTIC_SIMILARITY"}.
+#'   Sending no task type is not a neutral option: the API enum defines
+#'   \code{TASK_TYPE_UNSPECIFIED} as "unset value, which will default to one
+#'   of the other enum values", it contains no value meaning "no conditioning",
+#'   and omitting the field returns vectors identical to
+#'   \code{"RETRIEVAL_QUERY"} --- the query side of an asymmetric retrieval
+#'   pair. The symmetric task types disagree with each other about as much as
+#'   two providers do, so the choice has to be stated.
+#'
+#'   For Voyage, \code{input_type} defaults to \code{NULL}, which is Voyage's
+#'   own default and sends no instruction. Setting it to \code{"document"} or
+#'   \code{"query"} makes the endpoint prepend a retrieval instruction to the
+#'   text before encoding, so what is embedded is the instruction plus the text
+#'   rather than the text.
+#'
+#'   OpenAI exposes no equivalent parameter and always encodes the string as
+#'   given. A common condition across all three is therefore not attainable;
+#'   state the options you used when you report a cross-provider comparison.
 #' @return A numeric matrix (texts x dimensions). Four attributes identify what
 #'   was embedded and by what: \code{provider}, \code{model},
 #'   \code{access_date}, and \code{texts} --- the exact strings that were sent
@@ -292,21 +363,13 @@ embed <- function(texts,
     if (!dir.exists(cache_dir)) dir.create(cache_dir, recursive = TRUE)
     # オプションがベクトルを変える場合はキャッシュを分ける
     # （例: Gemini の taskType、出力次元数、Voyage の input_type）
-    opts <- list(...)
-    opts <- opts[intersect(names(opts),
-                           c("dims", "task_type", "input_type"))]
-    sig <- if (length(opts) == 0) "" else paste0("_", paste(
-      vapply(names(opts), function(k) {
-        # 明示的に NULL を渡した場合（＝そのパラメータを送らない条件）も
-        # 既定と別のキャッシュに分ける。空文字だと "指定なし" と区別が
-        # つかず、条件の違う二つのベクトルが同じ鍵に混ざる。
-        v <- if (is.null(opts[[k]])) "none"
-             else gsub("[^A-Za-z0-9]", "", as.character(opts[[k]]))
-        paste0(substr(k, 1, 3), v)
-      }, character(1)), collapse = "-"))
+    # 鍵は req_opts（解決済みの値）から作る。呼び出し側が明示した引数だけを
+    # 見ると、既定値を変えたときに鍵が変わらず、旧条件のベクトルが黙って
+    # 再利用される。NULL は「そのパラメータを送らない」を意味するので落とす。
     cache_file <- file.path(
       cache_dir, paste0(provider, "_",
-                        gsub("[^A-Za-z0-9._-]", "_", model), sig, ".rds"))
+                        gsub("[^A-Za-z0-9._-]", "_", model),
+                        .cache_sig(req_opts), ".rds"))
     if (file.exists(cache_file)) cached <- readRDS(cache_file)
     # 取得日はキャッシュの属性として持つ（値の構造は変えない）。既存の
     # キャッシュにはこの属性が無く、その分の取得日は不明のまま NA になる。
@@ -568,7 +631,7 @@ embedding_info <- function(x) {
                            api_key   = NULL,
                            batch     = 100,
                            dims      = NULL,
-                           task_type = NULL,
+                           task_type = "SEMANTIC_SIMILARITY",
                            progress  = TRUE,
                            rpm       = NULL,
                            on_chunk  = NULL, ...) {
@@ -668,16 +731,16 @@ embedding_info <- function(x) {
 
 
 # ── Voyage AI (Anthropic推奨) ──────────────────────────────
-# モデル: voyage-multilingual-2   (1024次元・多言語)
+# モデル: voyage-4   (1024次元・多言語)
 # 公式:   https://docs.voyageai.com/docs/embeddings
 # キー取得: https://dash.voyageai.com
 # 無料枠は 3 req/分 と厳しいが、429 は Retry-After に従い自動リトライする
 
 .embed_voyage <- function(texts,
-                           model      = "voyage-multilingual-2",
+                           model      = "voyage-4",
                            api_key    = NULL,
                            batch      = 128,
-                           input_type = "document",
+                           input_type = NULL,
                            dims       = NULL,
                            progress   = TRUE,
                            rpm        = NULL,
@@ -688,7 +751,7 @@ embedding_info <- function(x) {
          "  Add VOYAGE_API_KEY=your_key to ~/.Renviron and restart R.\n",
          "  Get a key (free tier available): https://dash.voyageai.com",
          call. = FALSE)
-  if (is.null(model)) model <- "voyage-multilingual-2"
+  if (is.null(model)) model <- "voyage-4"
 
   chunks <- split(texts, ceiling(seq_along(texts) / batch))
   rep_ <- .chunk_reporter("voyage", length(texts), length(chunks), progress, rpm)

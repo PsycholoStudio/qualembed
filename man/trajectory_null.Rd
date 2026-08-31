@@ -4,7 +4,7 @@
 \alias{trajectory_null}
 \title{軌跡統計の帰無分布（文書内で段の順序を入れ替える）}
 \usage{
-trajectory_null(emb, seg, n_perm = 999, stat = "path_length")
+trajectory_null(emb, seg, n_perm = 999, stat = "path_length", lag_min = 3)
 }
 \arguments{
 \item{emb}{セグメントの埋め込み行列}
@@ -13,7 +13,10 @@ trajectory_null(emb, seg, n_perm = 999, stat = "path_length")
 
 \item{n_perm}{並べ替え回数（既定 999）}
 
-\item{stat}{評価する統計量（"path_length" / "step_mean" / "straightness"）}
+\item{stat}{評価する統計量（"path_length" / "step_mean" / "straightness"
+/ "far_mean"）}
+
+\item{lag_min}{stat = "far_mean" で「離れている」とみなす最小の段差（既定 3）}
 }
 \value{
 文書ごとの data.frame(doc_id, n_seg, observed, null_mean, z, p)。
@@ -25,4 +28,12 @@ trajectory_null(emb, seg, n_perm = 999, stat = "path_length")
 保ったまま「順序だけを壊した」比較対象が得られる。観測値がこの分布の
 どこに落ちるかが、順序が担っている情報の量である。局所的に一貫した
 語りは、並べ替えた自分より短い距離しか動かないはずである。
+}
+\details{
+\code{stat = "far_mean"} は、再帰プロットが見せる構造をそのまま検定する。
+語りの上で lag_min 段以上離れた対どうしの平均コサインを取り、順序を
+並べ替えた分布と比べる。並べ替えても類似度の値の集合は変わらないので、
+動くのは「どの対が近くに来るか」だけである。観測値が帰無より**高い**なら
+前の話題への回帰、**低い**なら話題の転換である。plot_recurrence() で
+目に付いたブロックが偶然かどうかは、この統計量で決める。
 }

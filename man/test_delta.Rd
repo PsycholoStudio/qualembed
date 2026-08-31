@@ -15,7 +15,7 @@ test_delta(sim_mat, groups, n_perm = 9999)
 \item{n_perm}{並べ替え回数}
 }
 \value{
-list(within, between, delta, p, n_perm)
+list(within, between, delta, sd_between, delta_std, p, n_perm)
 }
 \description{
 Δ = within − between の permutation 検定

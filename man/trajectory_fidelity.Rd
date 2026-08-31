@@ -4,26 +4,49 @@
 \alias{trajectory_fidelity}
 \title{射影の忠実さを測る（矢印の図を信じてよいかの診断）}
 \usage{
-trajectory_fidelity(emb, seg, scope = c("document", "shared"))
+trajectory_fidelity(
+  emb,
+  seg,
+  scope = c("document", "shared"),
+  layout = c("mds", "pca"),
+  null_reps = 200
+)
 }
 \arguments{
 \item{emb}{セグメントの埋め込み行列}
 
 \item{seg}{as_segments() の契約を満たす表}
 
-\item{scope}{"document"（文書ごとに射影）/ "shared"（全体で一つの射影）}
+\item{scope}{"document"（文書ごとに配置）/ "shared"（全体で一つの配置）}
+
+\item{layout}{"mds"（既定・非計量MDS）/ "pca"。MDS は距離の順位を目的関数に
+するので、次元数が点数を大きく超える埋め込みでは PCA より平面が忠実に
+なる。var_2d は PCA でしか定義されない（MDS には分散説明率がない）ので、
+MDS では NA が入る。忠実さは layout によらず shepard で読む。}
+
+\item{null_reps}{帰無の反復数。0 で帰無を計算しない（既定 200）}
 }
 \value{
-文書ごとの data.frame(doc_id, n_seg, var_2d, shepard)
+文書ごとの data.frame(doc_id, n_seg, layout, var_2d, var_null,
+  shepard, shepard_null)
 }
 \description{
 2次元への射影は距離を歪める。どれだけ歪むかは場合による——測れば済む。
 全次元でのペア距離と、平面上でのペア距離の順位相関（Shepard 相関）を
-文書ごとに返す。相関が高ければ、その平面図の「近い／遠い」は空間の
-「近い／遠い」を概ね反映している。
+文書ごとに返す。
 }
 \details{
-実測の目安（デモ15、5-8セグメントの逐語）: 1文書ずつ射影すれば
-PC1+PC2 が分散の 56%、順位相関の中央値 .87。40名を一つの共通射影に
-載せると 12% と .16 まで落ちる。**軌跡の地図は文書ごとに描くこと。**
+**生の値だけを見てはいけない。** 分散説明率も Shepard 相関も、
+セグメント数 n が小さいほど機械的に高くなる。中心化後のランクは
+n-1 なので、n=3 なら平面は常に厳密（分散 100%、相関 1.00）、
+n=4 でも等方な点で 2/(n-1) = 67% が出る。そこで同じ n を全文書の
+プールから無作為抽出した帰無を併せて返す。読むべきは観測と帰無の差で
+あって、観測の絶対値ではない。
+
+実測（デモ15、40名の逐語、中央値4セグメント）では、文書ごとの射影は
+分散 .70／相関 .92 を示すが、帰無は .74／.86 で、観測が帰無を上回った
+文書は 35 中 16 と偶然の範囲だった。他人のセグメントを寄せ集めても
+同じ数字が出る。一方、共通射影は分散 .14 に対し等方期待 .01 で、
+実質的な構造はこちらにある。**比較したい文書が複数あるなら
+scope = "shared" を使うこと。**
 }

@@ -6,7 +6,7 @@
 次元数の異なる空間を比較するため、各空間の最初の k 主成分に
 射影してから対称 Procrustes を実行する（Method: 既定 k = 5）}
 \usage{
-procrustes_m2(X, Y, k = 5, n_perm = 9999)
+procrustes_m2(X, Y, k = 5, n_perm = 9999, layout = c("pca", "mds"))
 }
 \arguments{
 \item{X, }{Y    同じ n 項目の embedding 行列（行の対応が取れていること）}

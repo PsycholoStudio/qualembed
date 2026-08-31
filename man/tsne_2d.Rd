@@ -6,8 +6,13 @@
 戻り値の列名は plot_embedding_2d() と互換のため PC1/PC2 とする}
 \usage{
 tsne_2d(mat, perplexity = NULL, seed = 2026)
+
+tsne_2d(mat, perplexity = NULL, seed = 2026)
 }
 \description{
+t-SNE で2次元に圧縮（PCAマップの頑健性チェック用・Rtsne が必要）
+戻り値の列名は plot_embedding_2d() と互換のため PC1/PC2 とする
+
 t-SNE で2次元に圧縮（PCAマップの頑健性チェック用・Rtsne が必要）
 戻り値の列名は plot_embedding_2d() と互換のため PC1/PC2 とする
 }

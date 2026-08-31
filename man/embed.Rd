@@ -30,7 +30,24 @@ become the row names of the result.}
 (\code{GEMINI_API_KEY}, \code{VOYAGE_API_KEY}, \code{OPENAI_API_KEY}),
 normally stored in \code{~/.Renviron}.}
 
-\item{cache}{Reuse and store previously fetched embeddings (default TRUE).}
+\item{cache}{Reuse and store previously fetched embeddings (default TRUE).
+  One RDS file per provider, model, and set of vector-changing request
+  options; within a file, one entry per text.
+
+  The cache key is built from the \emph{resolved} options, not from the
+  arguments the caller typed. \code{embed(x, provider = "gemini")} and
+  \code{embed(x, provider = "gemini", task_type = "SEMANTIC_SIMILARITY")}
+  therefore share a file, because they send the same request; an option
+  left at \code{NULL} is not sent and does not enter the key. The
+  alternative --- keying on what the caller passed --- looks equivalent and
+  is not: change a default and every call that relies on it keeps hitting
+  the old file, so vectors fetched under the previous condition are returned
+  silently under a key that now names a different one. Nothing errors, and
+  nothing in the returned matrix looks wrong.
+
+  A consequence worth knowing when you rerun someone's code: with
+  \code{cache = TRUE} you get their cache, not the endpoint. Delete the
+  file, or pass \code{refresh = TRUE}, to reach the API.}
 
 \item{refresh}{Ignore cached entries and fetch again, overwriting them
 (default FALSE). Useful after a provider updates a model.}
@@ -50,16 +67,29 @@ calling the API.}
   (Voyage). Options that change the returned vectors are given their own
   cache file automatically.
 
-  One default is not neutral and is worth knowing about. For Voyage,
-  \code{input_type} defaults to \code{"document"}, which makes the endpoint
-  prepend a retrieval instruction to each text before encoding it; Gemini's
-  \code{task_type} and OpenAI's \code{dimensions} are left unset, so those
-  two encode the string as given. The instruction is not cosmetic: on the
-  Big Five items the two Voyage spaces agree with each other at Mantel
-  \eqn{r_M = .86}, and clustering agreement with the theoretical factors
-  rises from .26 to .36 when it is removed. Pass \code{input_type = NULL}
-  to send no instruction, and state whichever you used when you report a
-  cross-provider comparison.}
+  The defaults are set so that the three providers are as close to a common
+  condition as their APIs allow, because every statistic in this package
+  rests on a cosine similarity matrix and is therefore a symmetric task.
+  They are not the providers' own defaults in every case.
+
+  For Gemini, \code{task_type} defaults to \code{"SEMANTIC_SIMILARITY"}.
+  Sending no task type is not a neutral option: the API enum defines
+  \code{TASK_TYPE_UNSPECIFIED} as "unset value, which will default to one
+  of the other enum values", it contains no value meaning "no conditioning",
+  and omitting the field returns vectors identical to
+  \code{"RETRIEVAL_QUERY"} --- the query side of an asymmetric retrieval
+  pair. The symmetric task types disagree with each other about as much as
+  two providers do, so the choice has to be stated.
+
+  For Voyage, \code{input_type} defaults to \code{NULL}, which is Voyage's
+  own default and sends no instruction. Setting it to \code{"document"} or
+  \code{"query"} makes the endpoint prepend a retrieval instruction to the
+  text before encoding, so what is embedded is the instruction plus the text
+  rather than the text.
+
+  OpenAI exposes no equivalent parameter and always encodes the string as
+  given. A common condition across all three is therefore not attainable;
+  state the options you used when you report a cross-provider comparison.}
 }
 \value{
 A numeric matrix (texts x dimensions). Four attributes identify what
