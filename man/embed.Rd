@@ -19,20 +19,30 @@ embed(
 )
 }
 \arguments{
-\item{texts}{Character vector of texts to embed. A named vector's names
+\item{texts}{A character vector of texts to embed. A named vector's names
 become the row names of the result.}
 
-\item{provider}{One of \code{"gemini"}, \code{"voyage"}, \code{"openai"}.}
+\item{provider}{Character; one of \code{"gemini"}, \code{"voyage"},
+\code{"openai"}. Defaults to \code{"gemini"}.}
 
-\item{model}{Model name; \code{NULL} uses the provider default.}
+\item{model}{Character; the model name. Defaults to \code{NULL}, which uses
+the provider default.}
 
-\item{api_key}{API key; \code{NULL} reads the environment variable
+\item{api_key}{Character; the API key. Defaults to \code{NULL}, which reads
+the environment variable
 (\code{GEMINI_API_KEY}, \code{VOYAGE_API_KEY}, \code{OPENAI_API_KEY}),
 normally stored in \code{~/.Renviron}.}
 
-\item{cache}{Reuse and store previously fetched embeddings (default TRUE).
+\item{cache}{Logical; whether to reuse and store previously fetched
+  embeddings. Defaults to \code{TRUE}.
   One RDS file per provider, model, and set of vector-changing request
   options; within a file, one entry per text.
+
+  \strong{The cache stores your texts verbatim and unencrypted.} For
+  participant data that makes a second plaintext copy on disk, which the
+  study's data-management plan has to account for: pass
+  \code{cache = FALSE}, or set \code{cache_dir} to a controlled-access
+  location.
 
   The cache key is built from the \emph{resolved} options, not from the
   arguments the caller typed. \code{embed(x, provider = "gemini")} and
@@ -49,18 +59,24 @@ normally stored in \code{~/.Renviron}.}
   \code{cache = TRUE} you get their cache, not the endpoint. Delete the
   file, or pass \code{refresh = TRUE}, to reach the API.}
 
-\item{refresh}{Ignore cached entries and fetch again, overwriting them
-(default FALSE). Useful after a provider updates a model.}
+\item{refresh}{Logical; whether to ignore cached entries and fetch again,
+overwriting them. Useful after a provider updates a model. Defaults to
+\code{FALSE}.}
 
-\item{cache_dir}{Directory holding the cache files.}
+\item{cache_dir}{Character; the directory holding the cache files. Defaults
+to \code{file.path("output", "embed_cache")}, which is relative to the
+working directory, so a session started elsewhere will not find an
+existing cache.}
 
-\item{progress}{Show per-batch progress for large jobs (default TRUE).}
+\item{progress}{Logical; whether to show per-batch progress for large jobs.
+Defaults to \code{TRUE}.}
 
-\item{rpm}{Cap requests per minute. Use on free tiers to stay under a rate
-limit instead of relying on retry-after-failure.}
+\item{rpm}{Numeric; a cap on requests per minute. Use on free tiers to stay
+under a rate limit instead of relying on retry-after-failure. Defaults to
+\code{NULL} (no cap).}
 
-\item{dry_run}{Report how many texts would be fetched and return without
-calling the API.}
+\item{dry_run}{Logical; whether to report how many texts would be fetched
+and return without calling the API. Defaults to \code{FALSE}.}
 
 \item{...}{Provider-specific options: \code{batch}, \code{dims}
   (output dimensionality), \code{task_type} (Gemini), \code{input_type}
@@ -99,8 +115,8 @@ A numeric matrix (texts x dimensions). Four attributes identify what
   call --- \code{request_options}, \code{fetch_dates}, \code{software}, and
   \code{request_batches}, a fingerprint of which texts travelled in the same
   request (the returned vector for a text depends on what accompanied it, and
-  no provider exposes that as a named option). \code{embedding_info()} prints
-  the set. With \code{dry_run = TRUE}, an invisible list of counts.
+  no provider exposes that as a named option). \code{\link{embedding_info}}
+  prints the set. With \code{dry_run = TRUE}, an invisible list of counts.
 }
 \description{
 Sends a character vector of texts to Gemini, Voyage AI, or OpenAI and
@@ -127,9 +143,9 @@ attr(emb, "texts")[1]   # "I felt calm all week." -- what was sent
 attributes(emb)[c("provider", "model", "access_date")]
 }
 
-\code{save_embeddings()} warns if you archive a matrix without it, and
-\code{seed_cache_from_archive.R} uses it to rebuild a cache from archived
-matrices alone --- so a reader who has your archive never needs an API key
+\code{\link{save_embeddings}} warns if you archive a matrix without it, and
+the archive-seeding script distributed with the paper uses it to rebuild a
+cache from archived matrices alone --- so a reader who has your archive never needs an API key
 to reproduce the analysis. Subsetting a matrix drops the attribute (this is
 how R works); embed once and subset afterwards, or re-attach it yourself.
 }
@@ -145,4 +161,13 @@ embed(my_responses, provider = "gemini", dry_run = TRUE)
 # Free tier: pace requests instead of hitting the limit
 emb <- embed(my_responses, provider = "gemini", rpm = 60)
 }
+}
+\seealso{
+\code{\link{check_api}} to confirm a key before a long run;
+  \code{\link{cos_sim_matrix}} and \code{\link{semantic_projection}} for
+  what to do with the matrix; \code{\link{embedding_info}} to report what a
+  matrix was measured with, \code{\link{save_embeddings}} to archive it,
+  and \code{\link{cache_info}} and \code{\link{cache_path}} for the
+  cache. What to record when you report a matrix:
+  \url{https://github.com/PsycholoStudio/qualembed/blob/main/docs/provenance.md}.
 }

@@ -2,16 +2,26 @@
 % Please edit documentation in R/stats-viz.R
 \name{euclidean_dist}
 \alias{euclidean_dist}
-\title{ペアワイズユークリッド距離行列}
+\title{Compute pairwise Euclidean distances between embedding rows}
 \usage{
 euclidean_dist(mat)
 }
 \arguments{
-\item{mat}{embedding行列 (n × d)}
+\item{mat}{A numeric matrix with one row per text, as returned by
+\code{\link{embed}}.}
 }
 \value{
-dist オブジェクト
+An object of class \code{dist} holding the n * (n - 1) / 2 pairwise
+  Euclidean distances, labelled by \code{rownames(mat)}.
 }
 \description{
-ペアワイズユークリッド距離行列
+A thin wrapper around \code{\link[stats]{dist}} for embedding matrices,
+provided for the procedures that expect a distance object rather than a
+similarity matrix, such as \code{\link{mantel_test}} or multidimensional
+scaling.
+}
+\seealso{
+\code{\link{cos_sim_matrix}} for the similarity alternative, and
+  \code{\link{mantel_test}}, which takes square matrices and so needs
+  \code{as.matrix()} around the result.
 }

@@ -2,34 +2,41 @@
 % Please edit documentation in R/stats-viz.R
 \name{progress_ticker}
 \alias{progress_ticker}
-\title{長い処理の進捗を表示する}
+\title{Report the progress of a long-running loop}
 \usage{
 progress_ticker(label, n_total, min_secs = 10, every = 15, stream = stderr())
 }
 \arguments{
-\item{label}{表示名（"delta perm" など）}
+\item{label}{Character; a short name shown in brackets, for example
+\code{"delta perm"}.}
 
-\item{n_total}{総反復数}
+\item{n_total}{Integer; the total number of iterations expected.}
 
-\item{min_secs}{この秒数より早く終わる見込みなら何も出さない}
+\item{min_secs}{Numeric; the projected running time, in seconds, below which
+the reporter stays silent. Defaults to 10.}
 
-\item{every}{端末でないとき、何秒ごとに 1 行追記するか}
+\item{every}{Numeric; the shortest interval, in seconds, between appended
+lines when the stream is not a terminal. Defaults to 15.}
 
-\item{stream}{出力先。既定は `stderr()`}
+\item{stream}{A connection to write to. Defaults to \code{stderr()}.}
 }
 \value{
-list(tick, done)。`tick(k = 1L)` を反復ごとに、`done()` を最後に呼ぶ
+A list of two functions. \code{tick(k = 1L)} records that \code{k}
+  further iterations are complete and refreshes the display; \code{done()}
+  prints the closing line with the elapsed time, and should be called once
+  after the loop.
 }
 \description{
-並べ替え検定やジャックナイフは、材料によっては数分から十数分かかる。
-走らせた人が止まっているのか進んでいるのか分からないのは、再現用の
-コードとして望ましくない。`embed()` のバッチ表示と同じ体裁（端末なら
-`\r` で 1 行を上書き、ログなら一定間隔で 1 行ずつ追記）で、追加の
-パッケージを使わずに進捗と残り時間を出す。
+Builds a small progress reporter for permutation tests, jackknives and
+other loops that can run for several minutes, so that whoever reproduces an
+analysis can tell a slow run from a stalled one. On a terminal a single
+line is overwritten in place; when output is redirected to a file, one line
+is appended at fixed intervals instead. No extra packages are needed.
 }
 \details{
-`min_secs` 秒より早く終わる見込みのものは何も表示しない。最初の数回の
-実測から見積もるので、短い処理の出力でログが埋まることがない。
+Work projected to finish sooner than \code{min_secs} prints nothing. The
+projection is formed from the first few iterations, so short runs never
+fill a log.
 }
 \examples{
 \dontrun{

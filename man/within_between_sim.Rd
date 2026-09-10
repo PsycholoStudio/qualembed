@@ -2,29 +2,49 @@
 % Please edit documentation in R/stats-viz.R
 \name{within_between_sim}
 \alias{within_between_sim}
-\title{グループ内・グループ間の平均コサイン類似度と差 Δ}
+\title{Summarise within-group and between-group similarity}
 \usage{
 within_between_sim(sim_mat, groups)
 }
 \arguments{
-\item{sim_mat}{cos_sim_matrix() の出力}
+\item{sim_mat}{A square similarity matrix, typically the output of
+\code{\link{cos_sim_matrix}}.}
 
-\item{groups}{各行に対応するグループラベル (character vector)}
+\item{groups}{A vector of group labels, one per row of \code{sim_mat} and
+in the same order.}
 }
 \value{
-list(within, between, delta = within - between, ratio,
-  sd_between, delta_std = delta / sd_between)
+A list with components \code{within} (mean similarity of same-group
+  pairs), \code{between} (mean similarity of different-group pairs),
+  \code{delta} (\code{within - between}), \code{ratio}
+  (\code{within / between}), \code{sd_between} (standard deviation of the
+  between-group similarities) and \code{delta_std}
+  (\code{delta / sd_between}).
 }
 \description{
-生の `delta` は空間の密度に依存する。同じテキストでもプロバイダにより
-グループ間コサインの平均は三倍ほど違うので、生の差はモデルをまたいで
-比べられない。`delta_std` はグループ間類似度の標準偏差で割った尺度不変
-版で、こちらは空間をまたいで読める。
+Splits the pairs in the upper triangle of a similarity matrix into those
+that share a group label and those that do not, and reports the two means
+with their difference \eqn{\Delta}. This is the descriptive core of the
+within-between contrast; \code{\link{test_delta}} adds a permutation test
+around it.
+}
+\details{
+The raw \code{delta} depends on how densely the space is packed. For the
+same texts, the mean between-group cosine can differ by a large factor
+from one provider to another, so raw differences are not comparable across
+models.
+\code{delta_std} rescales the difference by the spread of the
+between-group similarities and is the quantity to report when spaces are
+being compared.
 }
 \examples{
 \dontrun{
 s <- cos_sim_matrix(emb)
 wb <- within_between_sim(s, groups)
-wb$delta_std   # プロバイダ間で比較できるのはこちら
+wb$delta_std   # this is the value that is comparable across providers
 }
+}
+\seealso{
+\code{\link{test_delta}}, which adds a permutation test to these
+  descriptives.
 }

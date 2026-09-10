@@ -47,9 +47,46 @@
 
 # ── 1. 類似度・距離 ─────────────────────────────────────────
 
-#' コサイン類似度行列
-#' @param mat embedding行列 (n × d)
-#' @return n × n のコサイン類似度行列
+#' Compute the cosine similarity matrix of an embedding
+#'
+#' Computes the cosine similarity between every pair of rows of an embedding
+#' matrix. Cosine ignores vector length and compares directions only, which is
+#' the quantity embedding APIs are trained to make meaningful; it is the
+#' default similarity used throughout this package.
+#'
+#' @param mat A numeric matrix with one row per text and one column per
+#'   embedding dimension, as returned by \code{\link{embed}}. At least two
+#'   rows are required, and no row may have zero or non-finite length.
+#' @return An n by n symmetric matrix of cosine similarities with ones on the
+#'   diagonal, where n is the number of rows of \code{mat}. Row and column
+#'   names are inherited from \code{rownames(mat)}, so the texts themselves
+#'   label the result.
+#' @details
+#' The values in this matrix will look uniformly large, and that is the normal
+#' case rather than a sign that the texts are alike: the vectors share a common
+#' component that puts a floor under every pair. A contrast between groups is
+#' therefore small in absolute terms even
+#' when it is strong; read it through \code{\link{within_between_sim}}, which
+#' standardises it, and \code{\link{test_delta}}, which tests it against a
+#' permutation null, rather than from the size of the difference itself.
+#' @examples
+#' # The floor is easiest to see on vectors that share a component, as
+#' # embeddings do. Two groups are present, but every cosine is high.
+#' set.seed(1)
+#' centres <- matrix(rnorm(2 * 64), 2, 64)
+#' m <- centres[rep(1:2, each = 6), ] +
+#'   matrix(rnorm(12 * 64, sd = 1.2), 12, 64) + 3
+#' rownames(m) <- paste0("item", 1:12)
+#' groups <- rep(c("a", "b"), each = 6)
+#'
+#' s <- cos_sim_matrix(m)
+#' range(s[upper.tri(s)])            # nothing is dissimilar
+#' within_between_sim(s, groups)     # delta is small, delta_std is not
+#' test_delta(s, groups, n_perm = 999)$p
+#' @seealso \code{\link{within_between_sim}} and \code{\link{test_delta}} to
+#'   compare groups, \code{\link{test_ari}} to test a partition,
+#'   \code{\link{centered_sim_matrix}} for the mean-centered variant
+#'   and \code{\link{euclidean_dist}} for a distance-based alternative.
 #' @export
 cos_sim_matrix <- function(mat) {
   if (!is.matrix(mat) || !is.numeric(mat))
@@ -70,35 +107,48 @@ cos_sim_matrix <- function(mat) {
   (mat %*% t(mat)) / (norms %o% norms)
 }
 
-#' 中心化してからのコサイン類似度行列
+#' Compute cosine similarities after mean-centering the embedding
 #'
-#' 埋め込みは原点のまわりに散らばっておらず、どの方向にも共通成分が乗って
-#' いる。そのため生のコサインは実質的に負にならない（本研究の項目文では
-#' 25項目300ペア・135項目9,045ペアのいずれも負がゼロ）。対立を問う質問
-#' ——逆転項目、反対の構成概念、賛否——では、これは「対立が見つからない」
-#' のではなく「対立を表現できる座標を使っていない」ことを意味する。
+#' Subtracts the column means of the embedding matrix before measuring angles,
+#' which allows negative similarities to appear. Embeddings are not spread
+#' around the origin: every vector shares a large common component, so raw
+#' cosines are almost never negative even between texts that mean opposite
+#' things. For questions about opposition
+#' (reverse-keyed items, opposing constructs, agreement versus disagreement)
+#' this means that no coordinates capable of expressing opposition are in use,
+#' rather than that no opposition exists. Intended for exploration and for
+#' sign-related checks; confirmatory analyses in the accompanying paper use
+#' \code{\link{cos_sim_matrix}} instead.
 #'
-#' 列平均を抜いてから角度を測ると負が戻る（本研究では 58〜74%）。ただし
-#' 二つの代償がある。第一に、中心化後の類似度は**項目プール依存**になる。
-#' 項目を一つ足し引きすればすべてのペアの値が動くので、生のコサインのように
-#' 「そのペアだけの性質」としては読めない。第二に、戻るのは符号の情報だけで、
-#' 分割の復元は改善しない（付録の表を参照。生 .373 / 中心化 .374）。
+#' @param mat A numeric matrix with one row per text, as returned by
+#'   \code{\link{embed}}. At least three rows are required, and no row may sit
+#'   exactly at the mean of the pool.
+#' @return An n by n similarity matrix, carrying the attribute
+#'   \code{centering = "mean"} so that centered matrices cannot be mistaken
+#'   for raw ones.
+#' @details
+#' Centering restores negative values, but at two costs. First, the
+#' similarities become pool-dependent: adding or removing one text moves every
+#' pair, so a centered value cannot be read as a property of that pair alone
+#' the way a raw cosine can. Second, whether it helps recover a partition is
+#' not something a rule can settle in advance: it wins on some pools and loses
+#' on others, and the pools where it wins are not the ones where whitening or
+#' eigencomponent removal win.
 #'
-#' 重要: これは符号の「修復」ではない。中心化するとベクトルの総和が 0 に
-#' なるため、中心化グラム行列の全要素和は恒等的に 0 であり、**対立が
-#' あろうがなかろうが負の値は必ず生じる**。検出したい現象を演算が作って
-#' しまう以上、負が出たこと自体は何の証拠にもならない。問えるのは「負が
-#' 正しい対に落ちるか」だけで、本研究の実測ではその利得は「全部正と
-#' 答える」規則を 1〜9 ポイント上回るにとどまる。
+#' Centering is not a repair of the sign. After centering, the vectors sum to
+#' zero, so the entries of the centered Gram matrix sum to zero identically
+#' and negative values must occur whether or not any opposition is present.
+#' The appearance of negative similarities is therefore not evidence of
+#' anything on its own. The answerable question is whether the negatives fall
+#' on the pairs theory says are opposed, which needs a known key to check
+#' against and a baseline of calling every pair positive to beat.
 #'
-#' したがって確証的な分析には使わない。`cos_sim_matrix()` を既定とし、
-#' 本関数は「読者が思いつく手を実際に試して落ちることを示す」ために置く。
-#'
-#' @param mat embedding行列 (n × d)。`embed()` の出力。
-#' @return n × n の類似度行列。生のものと取り違えないよう、属性
-#'   `centering = "mean"` を付す。
-#' @seealso [cos_sim_matrix()]（中心化なし）、[double_center()]（類似度行列
-#'   そのものを二重中心化する別の操作）
+#' With only two rows the two centered vectors necessarily point in opposite
+#' directions and the similarity is fixed at -1 by construction, so the
+#' function stops rather than return a meaningless number.
+#' @seealso \code{\link{cos_sim_matrix}} (no centering) and
+#'   \code{\link{double_center}}, a different operation that centers the
+#'   similarity matrix itself.
 #' @export
 centered_sim_matrix <- function(mat) {
   if (!is.matrix(mat) || !is.numeric(mat))
@@ -123,14 +173,22 @@ centered_sim_matrix <- function(mat) {
   sim
 }
 
-#' 類似度行列の二重中心化
+#' Double-center a similarity matrix
 #'
-#' 行平均・列平均・全体平均を抜く。`centered_sim_matrix()` が**埋め込み**を
-#' 中心化するのに対し、こちらは出来上がった**類似度行列**を中心化する別の
-#' 操作で、ハブ構造（特定の項目が誰とでも似ている）の統制に使う。
+#' Removes the row means, the column means and the grand mean from a
+#' similarity matrix. Whereas \code{\link{centered_sim_matrix}} centers the
+#' embedding, this centers the finished similarity matrix; use it to control
+#' hub structure, that is, the tendency of a few items to be similar to
+#' everything.
 #'
-#' @param sim_mat n × n の類似度行列
-#' @return 同じ大きさの二重中心化行列
+#' @param sim_mat A square n by n similarity matrix, for example the output of
+#'   \code{\link{cos_sim_matrix}}.
+#' @return An n by n matrix of the same dimensions and dimnames whose rows and
+#'   columns each sum to zero. The diagonal is no longer 1 and the entries are
+#'   no longer bounded by -1 and 1, so the result is a contrast structure
+#'   rather than a similarity.
+#' @seealso \code{\link{cos_sim_matrix}} for the matrix this transforms, and
+#'   \code{\link{centered_sim_matrix}}, which centers the embedding instead.
 #' @export
 double_center <- function(sim_mat) {
   if (!is.matrix(sim_mat) || nrow(sim_mat) != ncol(sim_mat))
@@ -140,31 +198,59 @@ double_center <- function(sim_mat) {
     colMeans(sim_mat)[col(sim_mat)] + mean(sim_mat)
 }
 
-#' ペアワイズユークリッド距離行列
-#' @param mat embedding行列 (n × d)
-#' @return dist オブジェクト
+#' Compute pairwise Euclidean distances between embedding rows
+#'
+#' A thin wrapper around \code{\link[stats]{dist}} for embedding matrices,
+#' provided for the procedures that expect a distance object rather than a
+#' similarity matrix, such as \code{\link{mantel_test}} or multidimensional
+#' scaling.
+#'
+#' @param mat A numeric matrix with one row per text, as returned by
+#'   \code{\link{embed}}.
+#' @return An object of class \code{dist} holding the n * (n - 1) / 2 pairwise
+#'   Euclidean distances, labelled by \code{rownames(mat)}.
+#' @seealso \code{\link{cos_sim_matrix}} for the similarity alternative, and
+#'   \code{\link{mantel_test}}, which takes square matrices and so needs
+#'   \code{as.matrix()} around the result.
 #' @export
 euclidean_dist <- function(mat) {
   dist(mat, method = "euclidean")
 }
 
-#' グループ内・グループ間の平均コサイン類似度と差 Δ
+#' Summarise within-group and between-group similarity
 #'
-#' 生の `delta` は空間の密度に依存する。同じテキストでもプロバイダにより
-#' グループ間コサインの平均は三倍ほど違うので、生の差はモデルをまたいで
-#' 比べられない。`delta_std` はグループ間類似度の標準偏差で割った尺度不変
-#' 版で、こちらは空間をまたいで読める。
+#' Splits the pairs in the upper triangle of a similarity matrix into those
+#' that share a group label and those that do not, and reports the two means
+#' with their difference \eqn{\Delta}. This is the descriptive core of the
+#' within-between contrast; \code{\link{test_delta}} adds a permutation test
+#' around it.
 #'
-#' @param sim_mat cos_sim_matrix() の出力
-#' @param groups  各行に対応するグループラベル (character vector)
-#' @return list(within, between, delta = within - between, ratio,
-#'   sd_between, delta_std = delta / sd_between)
+#' @param sim_mat A square similarity matrix, typically the output of
+#'   \code{\link{cos_sim_matrix}}.
+#' @param groups A vector of group labels, one per row of \code{sim_mat} and
+#'   in the same order.
+#' @return A list with components \code{within} (mean similarity of same-group
+#'   pairs), \code{between} (mean similarity of different-group pairs),
+#'   \code{delta} (\code{within - between}), \code{ratio}
+#'   (\code{within / between}), \code{sd_between} (standard deviation of the
+#'   between-group similarities) and \code{delta_std}
+#'   (\code{delta / sd_between}).
+#' @details
+#' The raw \code{delta} depends on how densely the space is packed. For the
+#' same texts, the mean between-group cosine can differ by a large factor
+#' from one provider to another, so raw differences are not comparable across
+#' models.
+#' \code{delta_std} rescales the difference by the spread of the
+#' between-group similarities and is the quantity to report when spaces are
+#' being compared.
 #' @examples
 #' \dontrun{
 #' s <- cos_sim_matrix(emb)
 #' wb <- within_between_sim(s, groups)
-#' wb$delta_std   # プロバイダ間で比較できるのはこちら
+#' wb$delta_std   # this is the value that is comparable across providers
 #' }
+#' @seealso \code{\link{test_delta}}, which adds a permutation test to these
+#'   descriptives.
 #' @export
 within_between_sim <- function(sim_mat, groups) {
   ut   <- upper.tri(sim_mat)
@@ -179,23 +265,30 @@ within_between_sim <- function(sim_mat, groups) {
 
 # ── 1b. 進捗表示 ─────────────────────────────────────────────
 
-#' 長い処理の進捗を表示する
+#' Report the progress of a long-running loop
 #'
-#' 並べ替え検定やジャックナイフは、材料によっては数分から十数分かかる。
-#' 走らせた人が止まっているのか進んでいるのか分からないのは、再現用の
-#' コードとして望ましくない。`embed()` のバッチ表示と同じ体裁（端末なら
-#' `\r` で 1 行を上書き、ログなら一定間隔で 1 行ずつ追記）で、追加の
-#' パッケージを使わずに進捗と残り時間を出す。
+#' Builds a small progress reporter for permutation tests, jackknives and
+#' other loops that can run for several minutes, so that whoever reproduces an
+#' analysis can tell a slow run from a stalled one. On a terminal a single
+#' line is overwritten in place; when output is redirected to a file, one line
+#' is appended at fixed intervals instead. No extra packages are needed.
 #'
-#' `min_secs` 秒より早く終わる見込みのものは何も表示しない。最初の数回の
-#' 実測から見積もるので、短い処理の出力でログが埋まることがない。
+#' Work projected to finish sooner than \code{min_secs} prints nothing. The
+#' projection is formed from the first few iterations, so short runs never
+#' fill a log.
 #'
-#' @param label    表示名（"delta perm" など）
-#' @param n_total  総反復数
-#' @param min_secs この秒数より早く終わる見込みなら何も出さない
-#' @param every    端末でないとき、何秒ごとに 1 行追記するか
-#' @param stream   出力先。既定は `stderr()`
-#' @return list(tick, done)。`tick(k = 1L)` を反復ごとに、`done()` を最後に呼ぶ
+#' @param label Character; a short name shown in brackets, for example
+#'   \code{"delta perm"}.
+#' @param n_total Integer; the total number of iterations expected.
+#' @param min_secs Numeric; the projected running time, in seconds, below which
+#'   the reporter stays silent. Defaults to 10.
+#' @param every Numeric; the shortest interval, in seconds, between appended
+#'   lines when the stream is not a terminal. Defaults to 15.
+#' @param stream A connection to write to. Defaults to \code{stderr()}.
+#' @return A list of two functions. \code{tick(k = 1L)} records that \code{k}
+#'   further iterations are complete and refreshes the display; \code{done()}
+#'   prints the closing line with the elapsed time, and should be called once
+#'   after the loop.
 #' @examples
 #' \dontrun{
 #' pb <- progress_ticker("jackknife", n)
@@ -227,7 +320,7 @@ progress_ticker <- function(label, n_total, min_secs = 10, every = 15,
     },
     done = function() {
       if (shown) {
-        cat(sprintf("%s  [%s] %d/%d (100%%)  %.0fs 経過        \n",
+        cat(sprintf("%s  [%s] %d/%d (100%%)  %.0fs elapsed        \n",
                     if (tty) "\r" else "", label, n_total, n_total,
                     as.numeric(difftime(Sys.time(), t0, units = "secs"))), file = stream)
         flush(stream)
@@ -243,12 +336,31 @@ progress_ticker <- function(label, n_total, min_secs = 10, every = 15,
   (1 + sum(null >= observed)) / (1 + length(null))
 }
 
-#' Δ = within − between の permutation 検定
-#' 帰無分布はグループラベルを項目上でシャッフルして生成する
-#' @param sim_mat cos_sim_matrix() の出力
-#' @param groups  グループラベル
-#' @param n_perm  並べ替え回数
-#' @return list(within, between, delta, sd_between, delta_std, p, n_perm)
+#' Test the within-between contrast Delta by permutation
+#'
+#' Tests whether items that share a theoretical group label are more similar
+#' to one another than to items of other groups. The observed
+#' \eqn{\Delta = within - between} is referred to a null distribution obtained
+#' by shuffling the group labels across items while the similarity matrix is
+#' held fixed, so no distributional assumption about the similarities is
+#' needed.
+#'
+#' @param sim_mat A square similarity matrix, typically the output of
+#'   \code{\link{cos_sim_matrix}}.
+#' @param groups A vector of group labels, one per row of \code{sim_mat} and
+#'   in the same order. At least two distinct groups are required, and at
+#'   least one group must have two members.
+#' @param n_perm Integer; the number of label permutations. Defaults to 9999,
+#'   for which the smallest attainable p value is 1e-04.
+#' @return A list with the descriptive quantities of
+#'   \code{\link{within_between_sim}} (\code{within}, \code{between},
+#'   \code{delta}, \code{sd_between}, \code{delta_std}), plus \code{null} (the
+#'   vector of \code{n_perm} permuted values of Delta), \code{p} (the
+#'   one-sided permutation p value, computed as one plus the number of null
+#'   values at least as large as the observed one, divided by
+#'   \code{1 + n_perm}) and \code{n_perm}.
+#' @seealso \code{\link{within_between_sim}} for the descriptives alone, and
+#'   \code{\link{test_ari}} for the clustering counterpart.
 #' @export
 test_delta <- function(sim_mat, groups, n_perm = 9999) {
   .check_sim_groups(sim_mat, groups, "test_delta")
@@ -273,14 +385,25 @@ test_delta <- function(sim_mat, groups, n_perm = 9999) {
   pb$done()
   list(within = obs$within, between = obs$between, delta = obs$delta,
        sd_between = obs$sd_between, delta_std = obs$delta_std,
-       p = .perm_p(obs$delta, null), n_perm = n_perm)
+       null = null, p = .perm_p(obs$delta, null), n_perm = n_perm)
 }
 
 
-#' Adjusted Rand Index（Hubert & Arabie, 1985）
-#' 外部パッケージへの依存を避けるため直接実装
-#' @param x, y 2つの分割（同じ長さのラベルベクトル）
-#' @return ARI（チャンスレベル = 0、完全一致 = 1）
+#' Compute the adjusted Rand index between two partitions
+#'
+#' Chance-corrected agreement between two partitions of the same objects
+#' (Hubert and Arabie, 1985). Implemented directly rather than taken from
+#' another package, so that the reproduction code carries no extra dependency
+#' for a single formula.
+#'
+#' @param x,y Two label vectors of equal length describing the same objects in
+#'   the same order. Any type accepted by \code{table} may be used, and the
+#'   two partitions need not have the same number of classes.
+#' @return A single number: 0 at chance level and 1 for identical partitions.
+#'   Values below 0 indicate agreement worse than chance. If either partition
+#'   is degenerate, so that the index is undefined, 0 is returned.
+#' @seealso \code{\link{test_ari_sim}} and \code{\link{test_ari}}, which refer
+#'   this index to a permutation null.
 #' @export
 adjusted_rand_index <- function(x, y) {
   tab <- table(x, y)
@@ -294,15 +417,35 @@ adjusted_rand_index <- function(x, y) {
   (a - expected) / (maximum - expected)
 }
 
-#' 類似度行列に対する Ward法クラスタリング → ARI + permutation 検定
-#' 距離 (1 - 類似度) に ward.D2 を適用し、k 個に分割する。
-#' 埋め込みのコサイン類似度だけでなく、実回答の|相関|行列など
-#' 任意の類似度行列に同一パイプラインを適用できる（対称比較用）。
-#' @param sim_mat 類似度行列（対角1・対称）
-#' @param groups  理論的グループラベル
-#' @param k       クラスタ数（既定 = グループ数）
-#' @param n_perm  並べ替え回数
-#' @return list(ari, p, clusters, table, hclust, n_perm)
+#' Cluster a similarity matrix and test its agreement with theory
+#'
+#' Turns a similarity matrix into distances (\code{1 - similarity}), clusters
+#' them with Ward's method (\code{ward.D2}), cuts the tree into \code{k}
+#' groups, and scores the cut against a theoretical grouping with the adjusted
+#' Rand index. The null distribution is generated by shuffling the theoretical
+#' labels.
+#'
+#' Any similarity matrix may be supplied, not only embedding cosines: the
+#' matrix of absolute correlations among observed responses can be sent
+#' through exactly the same pipeline, which is what makes the comparison
+#' between an embedding space and a response space symmetric.
+#'
+#' @param sim_mat A square, symmetric similarity matrix with ones on the
+#'   diagonal.
+#' @param groups A vector of theoretical group labels, one per row of
+#'   \code{sim_mat} and in the same order.
+#' @param k Integer; the number of clusters to cut. Defaults to the number of
+#'   distinct labels in \code{groups} and must lie between 2 and
+#'   \code{nrow(sim_mat) - 1}.
+#' @param n_perm Integer; the number of label permutations. Defaults to 9999.
+#' @return A list with \code{ari} (the observed adjusted Rand index),
+#'   \code{p} (the one-sided permutation p value), \code{null} (the permuted
+#'   indices, returned so that the observed value can be plotted against
+#'   them), \code{clusters} (the cluster membership of each item),
+#'   \code{table} (the cluster by group cross-tabulation), \code{hclust} (the
+#'   fitted \code{\link[stats]{hclust}} object) and \code{n_perm}.
+#' @seealso \code{\link{test_ari}} to start from an embedding matrix, and
+#'   \code{\link{adjusted_rand_index}} for the index itself.
 #' @export
 test_ari_sim <- function(sim_mat, groups, k = length(unique(groups)),
                          n_perm = 9999) {
@@ -318,28 +461,69 @@ test_ari_sim <- function(sim_mat, groups, k = length(unique(groups)),
   null <- vapply(seq_len(n_perm), function(.i) {
     v <- adjusted_rand_index(cl, sample(groups)); pb$tick(); v }, numeric(1))
   pb$done()
-  list(ari = obs, p = .perm_p(obs, null),
+  # 帰無分布そのものも返す。観測値と並べて図に示せるようにするため。
+  list(ari = obs, p = .perm_p(obs, null), null = null,
        clusters = cl, table = table(cluster = cl, group = groups),
        hclust = hc, n_perm = n_perm)
 }
 
-#' Ward法階層クラスタリング → 理論分類との ARI + permutation 検定
-#' embedding 行列からコサイン類似度を計算して test_ari_sim() に委譲する
-#' @param mat    embedding行列
-#' @param groups 理論的グループラベル
-#' @param k      クラスタ数（既定 = グループ数）
-#' @param n_perm 並べ替え回数
-#' @return list(ari, p, clusters, table, hclust, n_perm)
+#' Cluster an embedding and test its agreement with theory
+#'
+#' Computes the cosine similarity matrix of an embedding with
+#' \code{\link{cos_sim_matrix}} and passes it to \code{\link{test_ari_sim}}.
+#' Use this function when starting from an embedding matrix, and
+#' \code{\link{test_ari_sim}} when starting from a similarity matrix of some
+#' other kind, such as correlations among observed responses.
+#'
+#' @param mat A numeric matrix with one row per text, as returned by
+#'   \code{\link{embed}}.
+#' @param groups A vector of theoretical group labels, one per row of
+#'   \code{mat} and in the same order.
+#' @param k Integer; the number of clusters to cut. Defaults to the number of
+#'   distinct labels in \code{groups}.
+#' @param n_perm Integer; the number of label permutations. Defaults to 9999.
+#' @return The list returned by \code{\link{test_ari_sim}}, with components
+#'   \code{ari}, \code{p}, \code{null}, \code{clusters}, \code{table},
+#'   \code{hclust} and \code{n_perm}.
+#' @seealso \code{\link{test_ari_sim}} to start from a similarity matrix, and
+#'   \code{\link{adjusted_rand_index}} for the index itself.
 #' @export
 test_ari <- function(mat, groups, k = length(unique(groups)), n_perm = 9999) {
+  # 類似度行列を渡されても cos_sim_matrix() は素通しし、類似度の類似度を
+  # 取って別の答えを返してしまう。エラーにならず値が変わるのが最悪なので、
+  # 対称・対角 1・正方という類似度行列の特徴で捕まえて test_ari_sim() へ送る。
+  if (is.matrix(mat) && nrow(mat) == ncol(mat) && nrow(mat) > 1 &&
+      isTRUE(all.equal(unname(diag(mat)), rep(1, nrow(mat)),
+                       tolerance = 1e-8)) &&
+      isTRUE(all.equal(mat, t(mat), check.attributes = FALSE)))
+    stop("test_ari(): `mat` looks like a similarity matrix (square, ",
+         "symmetric, ones on the diagonal), not an embedding. Use ",
+         "test_ari_sim() for a similarity matrix, or pass the embedding ",
+         "matrix here.", call. = FALSE)
   test_ari_sim(cos_sim_matrix(mat), groups, k = k, n_perm = n_perm)
 }
 
-#' Mantel 検定（vegan::mantel のラッパー; Mantel, 1967）
-#' @param m1, m2  対応する n×n の距離（または類似度）行列。
-#'                行・列の順序が2つの行列で一致していること。
-#' @param n_perm  並べ替え回数
-#' @return list(r, p, n_perm)
+#' Test the agreement of two similarity structures by Mantel correlation
+#'
+#' Correlates the off-diagonal entries of two distance or similarity matrices
+#' defined over the same items, and tests that correlation by permuting the
+#' rows and columns of one matrix (Mantel, 1967). A wrapper around
+#' \code{\link[vegan]{mantel}} with Pearson correlation. This is the primary
+#' statistic for cross-space agreement in the accompanying paper, because it
+#' compares the structures directly and requires no choice of
+#' dimensionality.
+#'
+#' @param m1 A square n by n distance or similarity matrix.
+#' @param m2 A second square matrix of the same size, describing the same
+#'   items in the same row and column order. When both matrices carry row
+#'   names, the names must be identical; reorder one of them if they are not,
+#'   for example with \code{m2[rownames(m1), rownames(m1)]}.
+#' @param n_perm Integer; the number of permutations. Defaults to 9999.
+#' @return A list with \code{r} (the Mantel correlation, denoted r_M in the
+#'   paper), \code{p} (the permutation p value) and \code{n_perm}.
+#' @seealso \code{\link{procrustes_m2}} for the supplementary, descriptive
+#'   comparison, and \code{\link{euclidean_dist}}, whose \code{dist} object
+#'   has to be passed through \code{as.matrix()} first.
 #' @export
 mantel_test <- function(m1, m2, n_perm = 9999) {
   if (!is.matrix(m1) || !is.matrix(m2) ||
@@ -360,13 +544,35 @@ mantel_test <- function(m1, m2, n_perm = 9999) {
   list(r = unname(res$statistic), p = res$signif, n_perm = n_perm)
 }
 
-#' Procrustes 一致度 m² + PROTEST（vegan; Gower, 1975; Jackson, 1995）
-#' 次元数の異なる空間を比較するため、各空間の最初の k 主成分に
-#' 射影してから対称 Procrustes を実行する（Method: 既定 k = 5）
-#' @param X, Y    同じ n 項目の embedding 行列（行の対応が取れていること）
-#' @param k       比較に使う主成分数
-#' @param n_perm  PROTEST の並べ替え回数（0 で PROTEST をスキップ）
-#' @return list(m2, corr = sqrt(1-m2), p, residuals（項目別・降順）, k, n_perm)
+#' Compare two spaces by Procrustes fit with a PROTEST permutation test
+#'
+#' Compares the configuration of the same items in two embedding spaces. The
+#' spaces may have different dimensionalities, so each is first reduced to
+#' \code{k} coordinates; a symmetric Procrustes fit then returns the residual
+#' sum of squares \eqn{m^2} (Gower, 1975), and PROTEST supplies a permutation
+#' p value (Jackson, 1995). Reported as supplementary, descriptive evidence
+#' alongside \code{\link{mantel_test}}, without any pass-or-fail threshold.
+#'
+#' @param X A numeric embedding matrix for n items.
+#' @param Y A second embedding matrix for the same n items in the same row
+#'   order; its number of columns may differ from that of \code{X}.
+#' @param k Integer; the number of dimensions retained before the fit.
+#'   Defaults to 5 and is capped at \code{min(ncol(X), ncol(Y), nrow(X) - 1)}.
+#' @param n_perm Integer; the number of PROTEST permutations. Defaults to
+#'   9999; set to 0 to skip the test, in which case \code{p} is \code{NA}.
+#' @param layout Character; how the k coordinates are formed, either
+#'   \code{"pca"} (the metric reduction fixed in the Method of the accompanying
+#'   paper) or \code{"mds"}. Defaults to \code{"pca"}.
+#' @return A list with \code{m2} (the Procrustes residual sum of squares, 0
+#'   for perfect agreement and 1 for none), \code{corr}
+#'   (\code{sqrt(1 - m2)}), \code{p} (the PROTEST p value, or \code{NA} when
+#'   \code{n_perm = 0}), \code{residuals} (the per-item residuals in
+#'   decreasing order, named after the rows of \code{X}, which identify the
+#'   items that fit worst), \code{k}, \code{n_perm} and \code{layout}.
+#' @seealso \code{\link{mantel_test}}, the primary statistic for cross-space
+#'   agreement, and \code{\link{procrustes_sensitivity}} for the fit across a
+#'   range of \code{k}.
+#' @export
 procrustes_m2 <- function(X, Y, k = 5, n_perm = 9999,
                           layout = c("pca", "mds")) {
   stopifnot(nrow(X) == nrow(Y))
@@ -389,10 +595,28 @@ procrustes_m2 <- function(X, Y, k = 5, n_perm = 9999,
        layout = layout)
 }
 
-#' Procrustes m² の k に対する感度分析（Method: k ∈ {2,...,10}）
-#' @param X, Y  embedding 行列
-#' @param ks    試す主成分数の範囲
-#' @return data.frame(k, m2)
+#' Trace the sensitivity of the Procrustes fit to the number of dimensions
+#'
+#' Repeats \code{\link{procrustes_m2}} over a range of \code{k} so that the
+#' agreement between two spaces can be read as a curve rather than as a single
+#' number that depends on an arbitrary choice of dimensionality. The
+#' permutation test is skipped throughout, since only the shape of the curve
+#' is at issue.
+#'
+#' @param X A numeric embedding matrix for n items.
+#' @param Y A second embedding matrix for the same n items in the same row
+#'   order.
+#' @param ks An integer vector of dimensionalities to try. Defaults to
+#'   \code{2:10} and is silently truncated at
+#'   \code{min(ncol(X), ncol(Y), nrow(X) - 1)}.
+#' @param layout Character; how the coordinates are formed, either \code{"pca"}
+#'   or \code{"mds"}; passed to \code{\link{procrustes_m2}}. Defaults to
+#'   \code{"pca"}.
+#' @return A data frame with one row per retained value of \code{k} and
+#'   columns \code{k}, \code{m2} and \code{layout}.
+#' @seealso \code{\link{procrustes_m2}}, the single-\code{k} fit this repeats,
+#'   and \code{\link{mantel_test}}, which needs no choice of dimensionality.
+#' @export
 procrustes_sensitivity <- function(X, Y, ks = 2:10,
                                    layout = c("pca", "mds")) {
   layout <- match.arg(layout)
@@ -406,14 +630,195 @@ procrustes_sensitivity <- function(X, Y, ks = 2:10,
 }
 
 
+# ── 2b. 効果量の不確かさ ─────────────────────────────────────
+#
+# 区間推定には標本モデルが要る。研究を繰り返したとき何が変わるのかが
+# 材料によって違うので、同じ手続きを全部に当てると、標本でないものを
+# 標本として扱うことになる。本稿は「埋め込みは決定論的写像の像であって
+# 確率変数の実現ではない」という立場を取るので、区間の出し方も材料で
+# 分ける。人が単位（回答者・評定者）なら jackknife_ci()、項目が単位
+# （器具そのもの）なら loo_range()。どちらも統計量を関数 theta として
+# 受けるので、Delta でも ARI でも Mantel r_M でも射影相関でも使える。
+
+#' Compute the leave-one-out range of a statistic (not a confidence interval)
+#'
+#' Recomputes a statistic n times, each time omitting one unit, and reports
+#' the smallest and largest value obtained. Intended for materials whose unit
+#' is the item: the items of an instrument are not drawn from a population, so
+#' a confidence interval would not mean anything, and the answerable question
+#' is instead whether any single item is carrying the result.
+#'
+#' @param n Integer; the number of units (items).
+#' @param theta A function that takes an integer vector of retained indices
+#'   and returns a single number, such as a Delta, an adjusted Rand index, a
+#'   Mantel correlation or a projection correlation.
+#' @param label Character; the name shown by the progress reporter. Defaults
+#'   to \code{"leave-one-out"}.
+#' @return A named numeric vector with \code{obs} (the statistic computed on
+#'   all units), \code{lo} and \code{hi} (the minimum and maximum over the n
+#'   leave-one-out recomputations) and \code{n_unit} (equal to \code{n}).
+#'   \code{lo} and \code{hi} bound the observed swing and must not be read as
+#'   a confidence interval.
+#' @seealso \code{\link{jackknife_ci}} for materials whose unit is a person.
+#' @export
+loo_range <- function(n, theta, label = "leave-one-out") {
+  obs <- theta(seq_len(n))
+  pb  <- progress_ticker(label, n)
+  v   <- vapply(seq_len(n), function(k) {
+    x <- theta(setdiff(seq_len(n), k)); pb$tick(); x }, numeric(1))
+  pb$done()
+  c(obs = obs, lo = min(v), hi = max(v), n_unit = n)
+}
+
+#' Compute a jackknife confidence interval for materials whose unit is a person
+#'
+#' Delete-one jackknife interval for statistics computed over respondents or
+#' raters. Severiano et al. (2011) report better coverage than the bootstrap
+#' for pairwise agreement indices, because resampling with replacement draws
+#' the same individual twice and inflates agreement. Supply \code{blocks} to
+#' delete groups of observations together, for example several narratives
+#' written by the same respondent.
+#'
+#' @param n Integer; the number of observations.
+#' @param theta A function that takes an integer vector of retained indices
+#'   and returns a single number.
+#' @param blocks A vector of length \code{n} giving the deletion unit of each
+#'   observation; observations sharing a value are dropped together. Defaults
+#'   to \code{seq_len(n)}, that is, one observation per block.
+#' @param level Numeric; the confidence level. Defaults to 0.95.
+#' @param cores Integer; the number of forked worker processes across which the
+#'   blocks are evaluated. Unix-alikes only: on Windows, and with
+#'   \code{cores = 1}, the run falls back to a sequential loop. Worth setting
+#'   when \code{theta} is expensive; progress is not reported from the
+#'   workers, only the start and the end. Defaults to 1.
+#' @param label Character; the name shown by the progress reporter. Defaults
+#'   to \code{"jackknife"}.
+#' @return A named numeric vector with \code{obs} (the statistic computed on
+#'   all observations), \code{lo} and \code{hi} (the normal-theory interval
+#'   formed from the jackknife pseudo-values) and \code{n_unit} (the number of
+#'   blocks, which is the effective sample size of the interval).
+#' @seealso \code{\link{loo_range}} for materials whose unit is the item, and
+#'   \code{\link{cor_jackknife}} for statistics of a correlation matrix.
+#' @export
+jackknife_ci <- function(n, theta, blocks = seq_len(n), level = .95,
+                         cores = 1L, label = "jackknife") {
+  obs <- theta(seq_len(n))
+  bl  <- unname(split(seq_len(n), blocks)); nb <- length(bl)
+  par_ok <- cores > 1L && .Platform$OS.type == "unix"
+  if (par_ok) {
+    # 子プロセスからは進捗を更新できないので、開始と終了だけ知らせる
+    cat(sprintf("  %s: %d blocks on %d cores...", label, nb, cores))
+    jk <- unlist(parallel::mclapply(seq_along(bl),
+      function(k) theta(unlist(bl[-k])), mc.cores = cores), use.names = FALSE)
+    cat(" done\n")
+    if (length(jk) != nb || anyNA(jk))
+      stop("the parallel run returned nothing; re-run with cores = 1.")
+  } else {
+    pb <- progress_ticker(label, nb)
+    jk <- vapply(seq_along(bl), function(k) {
+      v <- theta(unlist(bl[-k])); pb$tick(); v }, numeric(1))
+    pb$done()
+  }
+  ps  <- nb * obs - (nb - 1) * jk
+  se  <- stats::sd(ps) / sqrt(nb); z <- stats::qnorm(1 - (1 - level) / 2)
+  c(obs = obs, lo = mean(ps) - z * se, hi = mean(ps) + z * se, n_unit = nb)
+}
+
+#' Jackknife a statistic of a correlation matrix
+#'
+#' Delete-one jackknife over observations for any statistic computed from a
+#' correlation matrix, without recomputing the correlations. Passing a
+#' correlation matrix to \code{\link{jackknife_ci}} would call \code{cor} once
+#' per deleted observation; because a correlation can be rebuilt from four
+#' running sums (pairwise counts, cross products, sums and sums of squares),
+#' deleting an observation only requires subtracting its contribution. The
+#' point estimate matches full recomputation to within a bit or two of
+#' double precision, the interval bounds to within about 1e-14, which the
+#' package's own tests hold fixed.
+#'
+#' @param X A numeric matrix of observations by variables, or anything
+#'   \code{as.matrix} accepts. Missing values are handled pairwise.
+#' @param stat A function that takes a correlation matrix and returns a single
+#'   number.
+#' @param level Numeric; the confidence level. Defaults to 0.95.
+#' @return A named numeric vector with \code{obs}, \code{lo}, \code{hi} and
+#'   \code{n_unit} (the number of observations), as returned by
+#'   \code{\link{jackknife_ci}}.
+#' @seealso \code{\link{jackknife_ci}} for the general case, and
+#'   \code{\link{loo_range}} for materials whose unit is the item.
+#' @details
+#' Downdating subtracts from large running sums, so precision can be lost when
+#' a column spans an extreme range of values or has a variance close to
+#' machine epsilon. Bounded integer scales such as psychological ratings are
+#' unaffected. When in doubt, check the result against
+#' \code{\link{jackknife_ci}}.
+#' @export
+cor_jackknife <- function(X, stat, level = .95) {
+  X <- as.matrix(X)
+  M <- !is.na(X); Z <- X; Z[!M] <- 0; Mn <- M + 0
+  N <- crossprod(Mn); Sxy <- crossprod(Z)
+  Sx <- crossprod(Z, Mn); Sxx <- crossprod(Z^2, Mn)
+  rebuild <- function(N, Sxy, Sx, Sxx) {
+    v <- N * Sxx - Sx^2
+    r <- (N * Sxy - Sx * t(Sx)) / sqrt(v * t(v))
+    diag(r) <- 1; r
+  }
+  n   <- nrow(X)
+  obs <- stat(rebuild(N, Sxy, Sx, Sxx))
+  pb  <- progress_ticker("correlation jackknife", n)
+  jk  <- vapply(seq_len(n), function(k) {
+    m <- Mn[k, ]; z <- Z[k, ]
+    v <- stat(rebuild(N - outer(m, m), Sxy - outer(z, z),
+                      Sx - outer(z, m), Sxx - outer(z^2, m)))
+    pb$tick(); v }, numeric(1))
+  pb$done()
+  ps <- n * obs - (n - 1) * jk
+  se <- stats::sd(ps) / sqrt(n); zq <- stats::qnorm(1 - (1 - level) / 2)
+  c(obs = obs, lo = mean(ps) - zq * se, hi = mean(ps) + zq * se, n_unit = n)
+}
+
 # ── 3. Semantic projection（Grand et al., 2022）─────────────
 
-#' アンカー重心の差ベクトルが定義する軸に項目を射影する
-#' a = mean(high) - mean(low),  p_i = x_i・a / ||a||
-#' @param item_mat 項目の embedding 行列 (n × d)
-#' @param high_mat 高極アンカー句の embedding 行列
-#' @param low_mat  低極アンカー句の embedding 行列
-#' @return 項目ごとの射影スコア（名前付き数値ベクトル）
+#' Project items onto an axis defined by two sets of anchors
+#'
+#' Implements the semantic projection of Grand et al. (2022). The axis is the
+#' difference between the centroids of a high-pole and a low-pole set of
+#' anchor texts, and each item is scored by the length of its projection onto
+#' that axis. Use it when theory names the dimension to be measured, instead
+#' of letting a component analysis choose one.
+#'
+#' The axis is \code{a = colMeans(high_mat) - colMeans(low_mat)} and the score
+#' of an item \code{x} is \code{sum(x * a) / sqrt(sum(a^2))}.
+#'
+#' @param item_mat A numeric embedding matrix of the items to be scored, one
+#'   row per item.
+#' @param high_mat An embedding matrix of the anchor texts marking the high
+#'   pole, with at least one row.
+#' @param low_mat An embedding matrix of the anchor texts marking the low
+#'   pole, with at least one row. All three matrices must come from the same
+#'   provider and model, so that they share the same number of columns, and
+#'   the two anchor centroids must not coincide.
+#' @return A named numeric vector of projection scores, one per row of
+#'   \code{item_mat} and named by \code{rownames(item_mat)}. The scores are
+#'   neither centered nor normalised, so their ordering and relative spacing
+#'   are interpretable but their absolute level is not.
+#' @examples
+#' # Anchors ship as character vectors; embed them with the items, then
+#' # subset the matrix. Keep drop = FALSE: with the thinned set ($C, one
+#' # word per pole) the subset would otherwise stop being a matrix.
+#' a <- valence_anchors$en$A
+#' \dontrun{
+#' items <- c("cheerful", "downcast", "content")
+#' e <- embed(c(items, a$high, a$low), provider = "gemini")
+#' semantic_projection(e[items, ],
+#'                     e[a$high, , drop = FALSE],
+#'                     e[a$low, , drop = FALSE])
+#' }
+#' @seealso \code{\link{valence_anchors}} and \code{\link{prestige_anchors}}
+#'   for anchor sets shipped with the package,
+#'   \code{\link{coords_2d}}, whose \code{axis} argument takes the same
+#'   anchor contrast, and \code{\link{plot_arc}}, which projects segments onto
+#'   it.
 #' @export
 semantic_projection <- function(item_mat, high_mat, low_mat) {
   if (!is.matrix(high_mat) || !is.matrix(low_mat) ||
@@ -439,27 +844,61 @@ semantic_projection <- function(item_mat, high_mat, low_mat) {
 
 # ── 4. 次元削減 ─────────────────────────────────────────────
 
-#' 表示用の2次元座標
+#' Compute two-dimensional display coordinates for an embedding matrix
 #'
-#' 既定は非計量MDS。PCA は分散を最大化するので、次元数が点数を大きく超える
-#' 埋め込みでは第2成分までに乗る分散が少なく、平面が点を潰す。距離の順位を
-#' 目的関数にする MDS のほうが、同じ2次元でも元の遠近をよく保つ
-#' （実測: 6材料 × 3プロバイダの18セルすべてで MDS が上回った）。
+#' @description
+#' Reduces an embedding matrix to a plane for plotting. The default layout is
+#' non-metric multidimensional scaling (MDS), which takes the rank order of
+#' distances as its loss function; \code{layout = "pca"} gives the metric
+#' alternative. Use this to produce the coordinates that
+#' \code{\link{plot_embedding_2d}} and \code{\link{plot_bilingual}} draw.
 #'
-#' **選択は「PCA か MDS か」ではない。** ユークリッド距離に対しては古典的
-#' （計量）MDS と PCA は同一の配置である（数値精度まで一致する）。選ぶのは
-#' 計量か非計量かであり、規則は「下流が読むものに縮約の目的関数を合わせる」
-#' の一つで済む。図は距離の**順位**で読まれるので非計量、Procrustes m2 は
-#' 相似変換後の二乗距離という**計量**の基準なので計量（= PCA）。
-#' procrustes_m2() の既定が PCA のままなのはそのためである。
+#' @details
+#' The choice is not "PCA or MDS". For Euclidean distances, classical (metric)
+#' MDS and PCA return the same configuration, agreeing to numerical precision.
+#' What is being chosen is metric versus non-metric, and a single rule settles
+#' it: match the loss function of the reduction to what the downstream reader
+#' uses. A scatter plot is read as the rank order of distances, so displays use
+#' non-metric MDS; Procrustes m2 is a metric criterion (squared distance after
+#' a similarity transform), which is why \code{\link{procrustes_m2}} keeps PCA
+#' as its default.
 #'
-#' @param mat    embedding行列 (n × d)
-#' @param layout "mds"（既定）/ "pca"
-#' @param axis   事前指定の方向。渡すと x 軸がその方向に最も沿う向きへ回す。
-#'   回転は距離を変えないので、忠実さはそのままで軸だけが解釈可能になる。
-#' @param scale  layout = "pca" のとき各次元を標準化（既定 FALSE = Method と一致）
-#' @return list(df = 座標データフレーム(PC1, PC2, label), ve = 分散説明率[2]
-#'   （MDS では NA）, layout = 使った配置, lab = 軸ラベル[2]）
+#' PCA maximises variance rather than preserving distances, so when the
+#' embedding dimensionality far exceeds the number of points, little variance
+#' reaches the first two components and the plane flattens the configuration.
+#' \code{\link{trajectory_fidelity}} reports, for your own data, how well the
+#' plotted distances track the measured ones.
+#'
+#' @param mat A numeric matrix with one row per text (n items) and one column
+#'   per embedding dimension (d), as returned by \code{\link{embed}}. Row names
+#'   are carried through as point labels.
+#' @param layout Character; either \code{"mds"} (non-metric MDS via
+#'   \code{MASS::isoMDS}) or \code{"pca"}. MDS falls back to PCA when there are
+#'   fewer than four rows, when \pkg{MASS} is not installed, or when the
+#'   distances are degenerate; the layout actually used is reported in the
+#'   result. Defaults to \code{"mds"}.
+#' @param axis An optional numeric vector of length d giving a pre-specified
+#'   direction in the embedding space, for instance the difference between the
+#'   centroids of two anchor sets (the axis \code{\link{semantic_projection}}
+#'   scores texts on, not the scores it returns). When supplied, the
+#'   configuration is
+#'   rotated so that the x axis lies as close as possible to that direction.
+#'   Rotation leaves distances unchanged, so fidelity is unaffected and only
+#'   the axis becomes interpretable. Defaults to \code{NULL} (no rotation).
+#' @param scale Logical; whether to standardise each embedding dimension before
+#'   the decomposition, which applies only when \code{layout = "pca"}. Defaults
+#'   to \code{FALSE}: standardising gives every embedding dimension the same
+#'   weight, which alters the space rather than the display of it.
+#' @return A list with four elements: \code{df}, a data frame of coordinates
+#'   with columns \code{PC1}, \code{PC2} and \code{label} (the column names are
+#'   kept for backward compatibility whichever layout is used); \code{ve}, the
+#'   percentage of variance explained by each of the two components, or
+#'   \code{c(NA, NA)} under MDS; \code{layout}, the layout actually used
+#'   (\code{"mds"} or \code{"pca"}); and \code{lab}, a length-2 character
+#'   vector of axis labels for the plot.
+#' @seealso \code{\link{plot_embedding_2d}} to draw the result, and
+#'   \code{\link{pca_2d}}, \code{\link{tsne_2d}} and \code{\link{umap_2d}} for
+#'   the other reductions.
 #' @export
 coords_2d <- function(mat, layout = c("mds", "pca"), axis = NULL,
                       scale = FALSE) {
@@ -487,21 +926,66 @@ coords_2d <- function(mat, layout = c("mds", "pca"), axis = NULL,
   list(df = df, ve = unname(ve), layout = used, lab = lab)
 }
 
-#' PCA で2次元に圧縮（後方互換。新しいコードは coords_2d() を使うこと）
-#' @param mat    embedding行列 (n × d)
-#' @param scale  TRUE で各次元を標準化（既定 FALSE）
-#' @return coords_2d(layout = "pca") と同じ
+#' Compute two-dimensional display coordinates by PCA
+#'
+#' @description
+#' Wrapper for \code{coords_2d(mat, layout = "pca")}, kept so that earlier
+#' scripts keep running. New code should call \code{\link{coords_2d}} directly:
+#' its default non-metric MDS layout preserves the original distances better in
+#' high-dimensional embedding spaces.
+#'
+#' @param mat A numeric matrix with one row per text (n items) and one column
+#'   per embedding dimension (d), as returned by \code{\link{embed}}.
+#' @param scale Logical; whether to standardise each embedding dimension before
+#'   the decomposition. Defaults to \code{FALSE}.
+#' @return The same list as \code{coords_2d(layout = "pca")}, with elements
+#'   \code{df}, \code{ve}, \code{layout} and \code{lab}.
+#' @seealso \code{\link{coords_2d}}, which this wraps.
 #' @export
 pca_2d <- function(mat, scale = FALSE) coords_2d(mat, "pca", scale = scale)
 
-#' 旧名（後方互換）。既定の標準化も pca_2d に合わせて FALSE に変更した。
+#' Compute two-dimensional display coordinates by PCA (former name of pca_2d)
+#'
+#' @description
+#' Alias for \code{\link{pca_2d}}, retained for scripts written against the
+#' earlier API. Note that \code{scale} now defaults to \code{FALSE} here too, so
+#' this name no longer standardises the embedding dimensions by default.
+#'
+#' @param mat A numeric matrix with one row per text, as returned by
+#'   \code{\link{embed}}.
+#' @param scale Logical; whether to standardise each embedding dimension before
+#'   the decomposition. Defaults to \code{FALSE}.
+#' @return The same list as \code{\link{pca_2d}}.
+#' @seealso \code{\link{pca_2d}}, which this aliases, and
+#'   \code{\link{coords_2d}} for new code.
+#' @export
 pca_coords <- pca_2d
 
-#' t-SNE で2次元に圧縮（PCAマップの頑健性チェック用・Rtsne が必要）
-#' 戻り値の列名は plot_embedding_2d() と互換のため PC1/PC2 とする
+#' Compute two-dimensional display coordinates by t-SNE
+#'
+#' @description
+#' Re-derives the map with t-SNE as a robustness check on the layout returned
+#' by \code{\link{coords_2d}}: structure that survives a second, very different
+#' reduction is less likely to be an artefact of the first. Requires the
+#' \pkg{Rtsne} package.
+#'
+#' @param mat A numeric matrix with one row per text, as returned by
+#'   \code{\link{embed}}. Row names are used as point labels.
+#' @param perplexity Numeric; the t-SNE perplexity. Defaults to \code{NULL},
+#'   which uses \code{max(2, floor((nrow(mat) - 1) / 3))}.
+#' @param seed Integer; the random seed. t-SNE is stochastic, so fixing the
+#'   seed is what makes the map reproducible. Defaults to 2026.
+#' @return A list with \code{df}, a data frame with columns \code{PC1},
+#'   \code{PC2} and \code{label}, and \code{ve}, which is \code{c(NA, NA)}
+#'   because t-SNE has no variance-explained quantity. The coordinate columns
+#'   are named \code{PC1}/\code{PC2} so that the result can be passed directly
+#'   to \code{\link{plot_embedding_2d}}.
+#' @seealso \code{\link{coords_2d}} for the default layout, and
+#'   \code{\link{umap_2d}} for the other robustness check.
+#' @export
 tsne_2d <- function(mat, perplexity = NULL, seed = 2026) {
   if (!requireNamespace("Rtsne", quietly = TRUE))
-    stop("tsne_2d には Rtsne が必要です: install.packages('Rtsne')")
+    stop("tsne_2d requires Rtsne: install.packages('Rtsne')")
   set.seed(seed)
   if (is.null(perplexity)) perplexity <- max(2, floor((nrow(mat) - 1) / 3))
   fit <- Rtsne::Rtsne(mat, dims = 2, perplexity = perplexity,
@@ -512,31 +996,30 @@ tsne_2d <- function(mat, perplexity = NULL, seed = 2026) {
   list(df = df, ve = c(NA_real_, NA_real_))
 }
 
-#' 旧名（後方互換）。既定の標準化も pca_2d に合わせて FALSE に変更した。
-#' @export
-pca_coords <- pca_2d
-
-#' t-SNE で2次元に圧縮（PCAマップの頑健性チェック用・Rtsne が必要）
-#' 戻り値の列名は plot_embedding_2d() と互換のため PC1/PC2 とする
-#' @export
-tsne_2d <- function(mat, perplexity = NULL, seed = 2026) {
-  if (!requireNamespace("Rtsne", quietly = TRUE))
-    stop("tsne_2d には Rtsne が必要です: install.packages('Rtsne')")
-  set.seed(seed)
-  if (is.null(perplexity)) perplexity <- max(2, floor((nrow(mat) - 1) / 3))
-  fit <- Rtsne::Rtsne(mat, dims = 2, perplexity = perplexity,
-                      pca = FALSE, check_duplicates = FALSE)
-  df <- as.data.frame(fit$Y)
-  colnames(df) <- c("PC1", "PC2")
-  df$label <- rownames(mat)
-  list(df = df, ve = c(NA_real_, NA_real_))
-}
-
-#' UMAP で2次元に圧縮（PCAマップの頑健性チェック用・uwot が必要）
+#' Compute two-dimensional display coordinates by UMAP
+#'
+#' @description
+#' Re-derives the map with UMAP as a robustness check on the layout returned by
+#' \code{\link{coords_2d}}, in the same role as \code{\link{tsne_2d}}. Requires
+#' the \pkg{uwot} package.
+#'
+#' @param mat A numeric matrix with one row per text, as returned by
+#'   \code{\link{embed}}. Row names are used as point labels.
+#' @param n_neighbors Integer; the size of the local neighbourhood UMAP uses.
+#'   Defaults to \code{NULL}, which uses \code{max(2, min(15, nrow(mat) - 1))}.
+#' @param seed Integer; the random seed. UMAP is stochastic, so fixing the
+#'   seed is what makes the map reproducible. Defaults to 2026.
+#' @return A list with \code{df}, a data frame with columns \code{PC1},
+#'   \code{PC2} and \code{label}, and \code{ve}, which is \code{c(NA, NA)}
+#'   because UMAP has no variance-explained quantity. The coordinate columns
+#'   are named \code{PC1}/\code{PC2} so that the result can be passed directly
+#'   to \code{\link{plot_embedding_2d}}.
+#' @seealso \code{\link{coords_2d}} for the default layout, and
+#'   \code{\link{tsne_2d}} for the other robustness check.
 #' @export
 umap_2d <- function(mat, n_neighbors = NULL, seed = 2026) {
   if (!requireNamespace("uwot", quietly = TRUE))
-    stop("umap_2d には uwot が必要です: install.packages('uwot')")
+    stop("umap_2d requires uwot: install.packages('uwot')")
   set.seed(seed)
   if (is.null(n_neighbors)) n_neighbors <- max(2, min(15, nrow(mat) - 1))
   fit <- uwot::umap(mat, n_components = 2, n_neighbors = n_neighbors)
@@ -549,13 +1032,41 @@ umap_2d <- function(mat, n_neighbors = NULL, seed = 2026) {
 
 # ── 5. 可視化 ───────────────────────────────────────────────
 
-#' 意味空間の2Dプロット（pca_2d / tsne_2d / umap_2d の出力を受け取る）
-#' @param proj   pca_2d() などの戻り値（list）、または PC1/PC2/label 列を
-#'               含む data.frame
-#' @param labels 点ラベル（NULL なら proj 内の label 列を使用）
-#' @param groups 色分け用グループラベル（NULL で単色）
-#' @param title  図のタイトル
-#' @param size   点のサイズ
+#' Plot items as points in a two-dimensional semantic map
+#'
+#' @description
+#' Draws the coordinates produced by \code{\link{coords_2d}},
+#' \code{\link{pca_2d}}, \code{\link{tsne_2d}} or \code{\link{umap_2d}} as a
+#' labelled scatter plot, optionally coloured by a grouping variable. Point
+#' labels are placed with \pkg{ggrepel}, so items that fall close together stay
+#' readable.
+#'
+#' @details
+#' Variance explained is a property of PCA, so the subtitle reporting it is
+#' printed only when the coordinates came from a PCA layout; under MDS it is
+#' omitted rather than shown as a misleading number. Axis labels follow the
+#' layout as well (\code{PC1}/\code{PC2} for PCA, \code{Dimension 1}/
+#' \code{Dimension 2} for MDS).
+#'
+#' @param proj Either the list returned by \code{\link{coords_2d}} and its
+#'   relatives, or a plain data frame with columns \code{PC1}, \code{PC2} and
+#'   \code{label}. A data frame is treated as a PCA layout with unknown
+#'   variance explained.
+#' @param labels An optional character vector of point labels, overriding the
+#'   \code{label} column in \code{proj}. Defaults to \code{NULL}.
+#' @param groups An optional vector of group labels, one per point, used to
+#'   colour the points. Defaults to \code{NULL} (a single colour).
+#' @param title Character; the plot title. Defaults to \code{NULL}.
+#' @param size Numeric; the point size passed to \code{geom_point()}. Defaults
+#'   to 3.5.
+#' @return A \pkg{ggplot2} object (printed when called at the top level): one
+#'   labelled point per item, coloured by \code{groups} where supplied, with
+#'   axis labels following the layout and, under PCA, a subtitle reporting the
+#'   variance explained. It can be modified further before printing or saving
+#'   with \code{\link{save_fig}}.
+#' @seealso \code{\link{coords_2d}} for the coordinates it draws, and
+#'   \code{\link{plot_bilingual}} for the two-language display.
+#' @export
 plot_embedding_2d <- function(proj, labels = NULL, groups = NULL,
                               title = NULL, size = 3.5) {
   df  <- if (is.data.frame(proj)) proj else proj$df
@@ -595,16 +1106,42 @@ plot_embedding_2d <- function(proj, labels = NULL, groups = NULL,
   p
 }
 
-#' 日英の意味空間を横並びで比較
-#' 各言語で独立にPCAした座標なので直接比較はできない
-#' （定量的な比較は procrustes_m2() で行う）
-#' @param df_en, df_ja  pca_2d()$df（色分け列を追加したもの）
-#' @param ve_en, ve_ja  分散説明率
-#' @param title         図のタイトル
-#' @param color_var     色分け列名
+#' Plot English and Japanese semantic maps side by side
+#'
+#' @description
+#' Draws two faceted panels, one per language, from coordinates computed
+#' separately in each language. Use it to show readers whether the same
+#' theoretical structure appears in both languages.
+#'
+#' @details
+#' Because each language is reduced independently, the two panels do not share
+#' a coordinate system: positions cannot be compared point by point across
+#' panels, and neither can the axes. The panel scales are therefore free, and
+#' the quantitative cross-language comparison belongs to
+#' \code{\link{procrustes_m2}} and \code{\link{mantel_test}} instead.
+#'
+#' @param df_en,df_ja Data frames of coordinates for the English and Japanese
+#'   panels, each the \code{df} element of a \code{\link{coords_2d}} result
+#'   (columns \code{PC1}, \code{PC2} and \code{label}), with any column named
+#'   by \code{color_var} added by the caller. Both must contain the same
+#'   columns. The axes are labelled \code{PC1} and \code{PC2} whatever layout
+#'   produced them.
+#' @param ve_en,ve_ja Numeric vectors of the variance explained in each panel,
+#'   as returned in the \code{ve} element of \code{\link{coords_2d}}. Accepted
+#'   for API compatibility; the panels do not print these values, because the
+#'   two reductions are not on a common scale. Default to \code{NULL}.
+#' @param color_var Character; the name of the column in \code{df_en} and
+#'   \code{df_ja} used to colour the points, as a length-one string. Defaults
+#'   to \code{NULL} (a single colour).
+#' @param title Character; the plot title. Defaults to \code{NULL}.
+#' @return A \pkg{ggplot2} object (printed when called at the top level): one
+#'   facet per language, each holding the labelled points of that language on
+#'   free scales, coloured by \code{color_var} where supplied.
+#' @seealso \code{\link{plot_embedding_2d}} for a single panel, and
+#'   \code{\link{coords_2d}} for the coordinates it draws.
 #' @export
-plot_bilingual <- function(df_en, df_ja, ve_en, ve_ja,
-                            title, color_var = NULL) {
+plot_bilingual <- function(df_en, df_ja, ve_en = NULL, ve_ja = NULL,
+                            title = NULL, color_var = NULL) {
   df_en$lang <- "English"
   df_ja$lang <- "Japanese"
   df_all <- bind_rows(df_en, df_ja)
@@ -631,11 +1168,37 @@ plot_bilingual <- function(df_en, df_ja, ve_en, ve_ja,
   p
 }
 
-#' 類似度行列のヒートマップ
-#' @param sim_mat     類似度行列（行名・列名が必要）
-#' @param order       表示順（既定は行名の順のまま）
-#' @param title       図のタイトル
-#' @param legend_name 凡例のタイトル
+#' Plot a similarity matrix as a heatmap
+#'
+#' @description
+#' Renders a square similarity matrix, typically from
+#' \code{\link{cos_sim_matrix}}, as a tiled heatmap. Reordering the rows and
+#' columns by theoretical grouping is what makes block structure visible, so
+#' \code{order} is usually worth supplying.
+#'
+#' @details
+#' The diverging colour scale is centered on the mean of the off-diagonal
+#' similarities rather than on zero. Embedding cosines are usually positive and
+#' occupy a narrow band, so a zero-centered scale would render every cell the
+#' same colour.
+#'
+#' @param sim_mat A square similarity matrix, typically the output of
+#'   \code{\link{cos_sim_matrix}}, with matching row and column names; the
+#'   names are used to label the axes.
+#' @param order A character vector of row and column names giving the display
+#'   order. May be a subset, in which case only those rows and columns are
+#'   drawn. Defaults to \code{rownames(sim_mat)}, that is, the order already in
+#'   the matrix.
+#' @param title Character; the plot title. Defaults to
+#'   \code{"Cosine similarity"}.
+#' @param legend_name Character; the title of the colour legend. Defaults to
+#'   \code{"Cosine\\nsimilarity"}.
+#' @return A \pkg{ggplot2} object (printed when called at the top level): one
+#'   tile per pair on a blue-white-red diverging scale centered at the mean of
+#'   the off-diagonal similarities, with the row and column names on both axes
+#'   in the order given by \code{order}.
+#' @seealso \code{\link{cos_sim_matrix}} for the matrix this displays, and
+#'   \code{\link{save_fig}} to write the result to a file.
 #' @export
 plot_similarity_heatmap <- function(sim_mat, order = rownames(sim_mat),
                                     title = "Cosine similarity",
@@ -661,19 +1224,31 @@ plot_similarity_heatmap <- function(sim_mat, order = rownames(sim_mat),
 
 # ── 6. 結果の記録・保存 ─────────────────────────────────────
 
-#' 図を指定フォルダに保存（figuresフォルダを自動作成）
-#' @param plot   ggplotオブジェクト
-#' @param name   ファイル名（拡張子なし）
-#' @param dir    保存先ディレクトリ
-#' @param w, h   幅・高さ（インチ）
-#' @param dpi    解像度
+#' Save a plot to a PNG file
+#'
+#' @description
+#' Writes a \pkg{ggplot2} object to \code{dir/name.png} on a white background,
+#' creating the directory if it does not yet exist, and reports the path it
+#' wrote.
+#'
+#' @param plot A \pkg{ggplot2} object.
+#' @param name Character; the file name without the extension, to which
+#'   \code{.png} is appended.
+#' @param dir Character; the output directory, created recursively if missing.
+#'   Defaults to \code{"figures"}.
+#' @param w Numeric; the width in inches. Defaults to 11.
+#' @param h Numeric; the height in inches. Defaults to 7.5.
+#' @param dpi Numeric; the resolution in dots per inch. Defaults to 180.
+#' @return The path written, invisibly.
+#' @seealso \code{\link{plot_embedding_2d}} and the other plotting functions,
+#'   whose results this writes to disk.
 #' @export
 save_fig <- function(plot, name, dir = "figures",
                      w = 11, h = 7.5, dpi = 180) {
   if (!dir.exists(dir)) dir.create(dir, recursive = TRUE)
   path <- file.path(dir, paste0(name, ".png"))
   ggsave(path, plot, width = w, height = h, dpi = dpi, bg = "white")
-  message("保存: ", path)
+  message("saved: ", path)
   invisible(path)
 }
 
@@ -682,18 +1257,23 @@ save_fig <- function(plot, name, dir = "figures",
 #' Reproducibility rests on these matrices rather than on re-fetching from the
 #' API, so the archive has to record what was embedded. It warns in the two
 #' cases where it would not: a matrix that has lost the \code{texts} attribute
-#' \code{embed()} attaches (subsetting drops it), and two matrices sharing a
-#' name (name-based lookup would return only the first, leaving the other
+#' \code{\link{embed}} attaches (subsetting drops it), and two matrices sharing
+#' a name (name-based lookup would return only the first, leaving the other
 #' unreachable). Both failures are silent otherwise, and both make the archive
 #' impossible to trace back to its inputs.
 #'
-#' @param emb_list Named list of matrices from \code{embed()} (a bare matrix is
-#'   accepted and named after \code{name}).
-#' @param name     Analysis name; becomes part of the file name.
-#' @param provider Provider name; becomes part of the file name.
-#' @param dir      Output directory.
+#' @param emb_list A named list of matrices from \code{\link{embed}} (a bare
+#'   matrix is accepted and named after \code{name}).
+#' @param name Character; the analysis name, which becomes part of the file
+#'   name.
+#' @param provider Character; the embedding provider name, which becomes part
+#'   of the file name.
+#' @param dir Character; the output directory, created recursively if missing.
+#'   Defaults to \code{file.path("output", "embeddings")}.
 #' @return The path written, invisibly.
-#' @seealso \code{embed()} for the \code{texts} attribute this relies on.
+#' @seealso \code{\link{embed}} for the \code{texts} attribute this relies on,
+#'   \code{\link{embedding_info}} to read the provenance back, and
+#'   \code{\link{write_stats}} for the accompanying statistics.
 #' @export
 save_embeddings <- function(emb_list, name, provider,
                             dir = file.path("output", "embeddings")) {
@@ -722,15 +1302,33 @@ save_embeddings <- function(emb_list, name, provider,
 
   path <- file.path(dir, sprintf("%s_%s.rds", name, provider))
   saveRDS(emb_list, path)
-  message("埋め込みを保存: ", path)
+  message("embeddings saved: ", path)
   invisible(path)
 }
 
-#' 統計値を CSV に記録（原稿の数値との照合・再現性検証用）
-#' @param stats    名前付きリスト（数値または文字列）
-#' @param name     デモ名（ファイル名の一部になる）
-#' @param provider プロバイダ名
-#' @param dir      出力先ディレクトリ
+#' Record a set of statistics to a CSV file
+#'
+#' @description
+#' Writes the statistics an analysis produced to
+#' \code{dir/name_provider.csv}, one row per statistic. Keeping every reported
+#' number in a machine-readable file is what allows the values in a manuscript
+#' to be checked against the code that produced them, and allows a re-run to be
+#' compared with an earlier one.
+#'
+#' @param stats A named list or named vector of statistics. Each element is
+#'   coerced with \code{as.character()} and only its first value is kept, so
+#'   pass scalars.
+#' @param name Character; the analysis or demonstration name, which becomes
+#'   part of the file name and fills the \code{demo} column.
+#' @param provider Character; the embedding provider name, which becomes part
+#'   of the file name and fills the \code{provider} column.
+#' @param dir Character; the output directory, created recursively if missing.
+#'   Defaults to \code{"output"}.
+#' @return The data frame that was written, invisibly, with columns
+#'   \code{demo}, \code{provider}, \code{statistic}, \code{value} and
+#'   \code{date}.
+#' @seealso \code{\link{save_embeddings}} for archiving the matrices these
+#'   statistics were computed from.
 #' @export
 write_stats <- function(stats, name, provider, dir = "output") {
   if (!dir.exists(dir)) dir.create(dir, recursive = TRUE)
@@ -744,7 +1342,7 @@ write_stats <- function(stats, name, provider, dir = "output") {
   )
   path <- file.path(dir, sprintf("%s_%s.csv", name, provider))
   write.csv(df, path, row.names = FALSE)
-  message("統計値を保存: ", path)
+  message("statistics saved: ", path)
   invisible(df)
 }
 
@@ -797,40 +1395,74 @@ write_stats <- function(stats, name, provider, dir = "output") {
   hit
 }
 
-#' 分割済みテキストを軌跡関数が受け取れる形に整える
+#' Convert already-segmented text into the segment table the package expects
+#'
+#' @description
+#' Standardises text that has already been split into segments so that the
+#' trajectory and similarity functions can consume it. This is the entry point
+#' for the package's text side: how the text was split is the analyst's
+#' decision, and this function takes no part in it. Segmenting the text
+#' yourself and passing the result here is the ordinary path;
+#' \code{\link{segment_text}} is a convenience, not a requirement.
 #'
 #' @details
-#' 分割の規則は分析者が決めるものである。この関数は「どう切ったか」には
-#' 一切関与せず、「切った結果」を共通の形に揃えるだけの入口である。
-#' segment_text() を使わずに自分で分割してよいし、そのほうが普通である。
+#' The result satisfies a simple contract: one row per segment, with
+#' \code{doc_id} identifying the document (a participant, an interview) and
+#' \code{text} holding the segment. \code{segid} gives the order within a
+#' document and is derived from row order when absent. Column names follow
+#' ecosystem convention: \code{doc_id} is what \pkg{readtext} returns and the
+#' default \code{docid_field} of \code{quanteda::corpus()}, and \code{segid} is
+#' the \code{quanteda::corpus_segment()} name. The older names \code{doc} and
+#' \code{index} are accepted as input aliases and always will be. Column
+#' matching is by alias table, never by guessing. A missing \code{text}
+#' column, or two columns matching the same role, stops the function and asks
+#' you to name the column, because silently using the wrong column is the
+#' worst outcome of all. A missing \code{doc_id} or \code{segid} is filled in
+#' instead, with a message saying so: one document named \code{"doc1"}, and
+#' segment order taken from the order of the rows.
 #'
-#' 現実的な出発点は三つある。
+#' Three practical starting points:
 #' \enumerate{
-#'   \item **質的分析ソフトの書き出し**（CSV/Excel）。Taguette は
-#'     `id, document, tag, content`、QualCoder は `File, Coder, Coded, ...`
-#'     の形で1行1セグメントを吐く。列名は自動照合されるので、
-#'     `read.csv()` して渡すだけでよい。
-#'   \item **逐語録ファイル**（1参加者1ファイル）。話者交替を空行区切りの
-#'     段落とし、話者名を `名前:` の接頭辞で書く。read_segments() が
-#'     .txt / .docx / .vtt / .srt を読む。
-#'   \item **自作の分割**。data.frame(doc_id, text) を行順に並べるだけで
-#'     よい。segid は行順から導出される。
+#'   \item \strong{An export from qualitative analysis software} (CSV or
+#'     Excel). Taguette writes \code{id, document, tag, content} and QualCoder
+#'     writes \code{File, Coder, Coded, ...}, both one row per coded segment.
+#'     Those column names are matched automatically, so you can read the
+#'     export with \code{read.csv()} and pass the result straight in.
+#'   \item \strong{Transcript files}, one file per participant. Write speaker
+#'     turns as blank-line-separated paragraphs with the speaker as a
+#'     \code{Name:} prefix; \code{\link{read_segments}} reads \code{.txt},
+#'     \code{.docx}, \code{.vtt} and \code{.srt}.
+#'   \item \strong{Your own segmentation.} A \code{data.frame(doc_id, text)} in
+#'     the intended order is enough; \code{segid} is derived from row order.
 #' }
 #'
-#' 注意: 「1行1セグメントのテキストファイル」は勧めない。その形を実際に
-#' 吐くのは Whisper の txt 出力だが、あの行は2〜5秒の音声区間であって
-#' 話者交替でも文でも意味単位でもない。正しく構造化されているように
-#' 見えて、そうでない——設計上もっとも避けたい失敗である。
+#' One format to avoid: a plain text file with one segment per line. The tool
+#' that actually produces that shape is Whisper's \code{.txt} output, whose
+#' lines are two- to five-second audio spans rather than speaker turns,
+#' sentences, or units of meaning. It looks correctly structured and is not.
 #'
-#' @param x       data.frame / 名前付き文字ベクトル / 名前付きリスト /
-#'                quanteda corpus
-#' @param doc_id,segid,text 列名を明示する場合に指定（既定は自動照合）
-#' @param renumber TRUE なら segid を文書内で振り直す
-#' @param drop_empty 空文字・NA の行を落とす（既定 TRUE）
-#' @param unit    分割単位の記録（"sentence" など）。図表の注に使う。
-#' @param quiet   導出時のメッセージを抑制
-#' @return class c("qe_segments", "data.frame")。列は
-#'   doc_id, segid, text, n_words, n_char, docname と、元の追加列。
+#' @param x The segmented text: a data frame with one row per segment, a
+#'   named character vector (names become \code{doc_id}), a named list of
+#'   character vectors (one element per document, each in order), a
+#'   \pkg{quanteda} corpus, or an existing \code{qe_segments} object.
+#' @param ... Arguments passed to the method for \code{x}. The data frame
+#'   method accepts \code{doc_id}, \code{segid} and \code{text} to name those
+#'   columns explicitly when the automatic alias matching is ambiguous or
+#'   wrong; \code{renumber} (logical, default \code{FALSE}) to renumber
+#'   \code{segid} from row order within each document; \code{drop_empty}
+#'   (logical, default \code{TRUE}) to discard empty and \code{NA} segments;
+#'   \code{unit}, a string recording the unit of segmentation (for example
+#'   \code{"sentence"}) that is stored as an attribute for figure and table
+#'   notes; and \code{quiet} (logical) to suppress the messages reporting what
+#'   was derived.
+#' @return An object of class \code{c("qe_segments", "data.frame")} with
+#'   columns \code{doc_id}, \code{segid}, \code{text}, \code{n_words},
+#'   \code{n_char} and \code{docname} (\code{doc_id.segid}, unique by
+#'   construction), followed by any other columns of the input, which are
+#'   carried through unchanged. Rows are ordered by document in order of first
+#'   appearance, then by \code{segid}.
+#' @seealso \code{\link{segment_text}} to split long texts, and
+#'   \code{\link{is_segments}} to test the class.
 #' @export
 as_segments <- function(x, ...) UseMethod("as_segments")
 
@@ -909,6 +1541,7 @@ as_segments.data.frame <- function(x, doc_id = NULL, segid = NULL, text = NULL,
   out$doc_id <- as.character(out$doc_id)
 
   out$n_words <- .n_words(out$text)
+  out$text    <- .declare_utf8(out$text)
   out$n_char  <- nchar(out$text)
   out$docname <- paste0(out$doc_id, ".", out$segid)
   if (anyDuplicated(out$docname))
@@ -960,8 +1593,19 @@ as_segments.corpus <- function(x, ..., unit = NULL, quiet = FALSE) {
   as_segments.data.frame(d, ..., unit = unit, quiet = quiet)
 }
 
-#' 契約を満たしているか
-#' @param x 任意のオブジェクト
+#' Test whether an object is a segment table
+#'
+#' @description
+#' Returns \code{TRUE} when \code{x} is a \code{qe_segments} object, that is,
+#' the standardised segment table returned by \code{\link{as_segments}},
+#' \code{\link{segment_text}} or \code{\link{read_segments}}. Use it to guard
+#' code that assumes the \code{doc_id}/\code{segid}/\code{text} columns are
+#' present.
+#'
+#' @param x Any object.
+#' @return A length-one logical.
+#' @seealso \code{\link{as_segments}}, \code{\link{segment_text}} and
+#'   \code{\link{read_segments}}, which produce the tested class.
 #' @export
 is_segments <- function(x) inherits(x, "qe_segments")
 
@@ -995,11 +1639,32 @@ summary.qe_segments <- function(object, ...) {
 
 
 # ── 分割の便宜（義務ではない）────────────────────────────────
+# UTF-8 でないロケール（サーバでは LC_ALL=C が既定であることが多い）では、
+# ファイルや他パッケージから来たテキストが "unknown" のまま入り、R が
+# 1 バイトを 1 文字として扱う。正規表現も nchar() も壊れるので、入口で
+# 一度だけ宣言する。すでに UTF-8 なら何も起きない。
+.declare_utf8 <- function(x) {
+  if (!is.character(x)) return(x)
+  u <- Encoding(x) == "unknown" & !is.na(x)
+  if (any(u)) {
+    ok <- u & validUTF8(x)
+    if (any(ok)) Encoding(x)[ok] <- "UTF-8"
+  }
+  x
+}
 
-#' 語数の計数（ICU の語境界。空白を持たない言語でも動く）
+
+#' Count words using ICU word boundaries
 #'
-#' 空白分割は日本語で段落全体を1語と数える。ICU の語境界解析は CJK に
-#' 辞書ベースの分割を持つので、同じ呼び出しで英語と日本語の両方が通る。
+#' @description
+#' Counts words with the ICU boundary analysis exposed by \pkg{stringi}, so the
+#' count is defined for languages that do not delimit words with spaces.
+#' Splitting on whitespace would count an entire Japanese paragraph as one
+#' word; ICU applies dictionary-based segmentation to CJK text, so English and
+#' Japanese both work through the same call.
+#'
+#' @param x A character vector.
+#' @return An integer vector of word counts, one per element of \code{x}.
 #' @keywords internal
 .n_words <- function(x) {
   as.integer(stringi::stri_count_boundaries(
@@ -1013,7 +1678,7 @@ summary.qe_segments <- function(object, ...) {
 .qe_env <- new.env(parent = emptyenv())
 .check_cjk_dict <- function() {
   if (!is.null(.qe_env$cjk)) return(invisible(.qe_env$cjk))
-  .qe_env$cjk <- .n_words("昨日は朝から雨だった") > 3
+  .qe_env$cjk <- .n_words("\u6628\u65e5\u306f\u671d\u304b\u3089\u96e8\u3060\u3063\u305f") > 3
   if (!.qe_env$cjk)
     warning("This build of ICU has no CJK word dictionary, so n_words will ",
             "undercount Japanese text (sentence splitting is unaffected -- ",
@@ -1023,12 +1688,26 @@ summary.qe_segments <- function(object, ...) {
   invisible(.qe_env$cjk)
 }
 
-#' 文分割で保護する略語
+#' List the abbreviations protected during sentence splitting
 #'
-#' ICU の文境界は "Dr." のような略語で切ってしまう。分割前にこれらの
-#' 終止符を私用領域文字へ退避し、分割後に戻す。
-#' 拡張は c(qe_abbreviations(), "Univ")、無効化は character(0)。
-#' "a.m." は実際に文末に来ることが多いので既定に含めない。
+#' @description
+#' Returns the default set of abbreviations that \code{\link{segment_text}}
+#' protects when splitting text into sentences. ICU treats the period in
+#' \code{"Dr."} as a sentence boundary; before splitting, the periods of these
+#' abbreviations are swapped for a private-use character and restored
+#' afterwards, so the sentence is not broken in the middle.
+#'
+#' @details
+#' Extend the set by passing \code{c(qe_abbreviations(), "Univ")} to the
+#' \code{abbrev} argument of \code{\link{segment_text}}, or disable protection
+#' entirely with \code{character(0)}. Matching is case-sensitive and on whole
+#' words. \code{"a.m."} is deliberately excluded: it genuinely ends sentences
+#' often enough that protecting it would merge more sentences than it saves.
+#'
+#' @return A character vector of abbreviations, written without the trailing
+#'   period.
+#' @seealso \code{\link{segment_text}}, whose \code{abbrev} argument defaults to
+#'   this set.
 #' @export
 qe_abbreviations <- function() {
   c("Dr", "Mr", "Mrs", "Ms", "Prof", "Sr", "Jr", "St", "Fig", "No", "Vol",
@@ -1036,41 +1715,72 @@ qe_abbreviations <- function() {
     "M.A", "B.A")
 }
 
-.SENT_SENTINEL <- ""
+.SENT_SENTINEL <- "\ue000"
 
-#' 長いテキストを分割して、契約を満たす表を返す
+#' Split long texts into segments
 #'
-#' 長大な記述——インタビュー記録、日誌、複数段落の自由記述——は、そのまま
-#' 埋め込むと一つの点になり、内部の推移が失われる。分割してから埋め込めば
-#' 意味空間上の軌跡として扱える。ただし分割の単位は結果を変えるので、
-#' 単位は分析者が明示的に選ぶべきものであり、既定値に委ねてはならない。
-#' 自分の規則で切ったものを as_segments() に渡すほうが普通の使い方である。
+#' @description
+#' Splits each element of a character vector into segments and returns them as
+#' a \code{qe_segments} table. A long response -- an interview transcript, a
+#' diary entry, a multi-paragraph open-ended answer -- becomes a single point
+#' when embedded whole, and everything that moves inside it is lost. Embedding
+#' its segments instead turns the response into a trajectory through semantic
+#' space. The unit of segmentation changes the result, so choose \code{by}
+#' deliberately rather than accepting a default; splitting the text by your own
+#' rule and passing it to \code{\link{as_segments}} is the more usual path.
 #'
 #' @details
-#' 文分割と語数は ICU（stringi）の境界解析による。したがって英語の
-#' `.!?` と日本語の `。！？` が同じ呼び出しで処理され、語数も日本語では
-#' 形態素単位になる。言語を指定する引数はない——ICU が内部で書記系を見る
-#' ので、判定すべき対象が存在しない。locale も指定しない（UAX#29 の
-#' ロケール非依存部分しか使われず、実測で locale の効果はなかった）。
+#' Sentence boundaries and word counts come from the ICU boundary analysis in
+#' \pkg{stringi}. English \code{.!?} and their full-width Japanese
+#' counterparts are therefore handled by the same call, and word counts in
+#' Japanese are morpheme-based rather than whitespace-based. There is no
+#' language argument, because ICU inspects the writing system itself and leaves
+#' nothing for the caller to declare. No locale is set either: only the
+#' locale-independent part of UAX #29 is used, so the result does not depend
+#' on the locale the session happens to run in.
 #'
-#' 二言語を対照する分析では **`by = "sentence"` を使うこと**。ICU の
-#' 日本語「語」は形態素相当なので、同一内容の対訳で日本語は英語の
-#' およそ1.4倍の語数になる。`size = 50` は二つの言語で同じ窓ではない。
-#' 対訳で一致したのは文の数だけだった。
+#' For analyses that compare two languages, use \code{by = "sentence"}. Because
+#' an ICU "word" in Japanese is roughly a morpheme, a translation yields more
+#' Japanese words than English ones for the same content, so \code{size = 50}
+#' is not the same window in the two languages. Sentence
+#' counts were the only unit that matched across translations.
 #'
-#' @param x        文字ベクトル。各要素が1つの文書。
-#' @param by       "sentence"（文）、"words"（語数の窓）、"chars"（文字数の窓）、
-#'   "paragraph"（空行区切り）。トークン上限が理由で切るなら "chars" が、
-#'   言語をまたいで意味の揃う唯一の単位である。
-#' @param size     窓の大きさ。NULL なら words = 50、chars = 200。
-#' @param overlap  窓の重なり。既定 0。
-#' @param min_words これ未満の語数の断片は直前の断片に併合する。既定 2、
-#'   すなわち1語だけの断片（「はい。」のような相槌）だけを吸収する。
-#'   3 にすると "It worked." のような正当な短文まで併合されるので勧めない。
-#'   0 にすれば併合しない。
-#' @param abbrev   文分割で保護する略語。qe_abbreviations() 参照。
-#' @param ids      文書ID。既定は連番。
-#' @return qe_segments（doc_id, segid, text, n_words, n_char, docname）
+#' If the ICU build in use has no CJK word dictionary, a warning is issued the
+#' first time a word count is needed: word counts for Japanese will be too low,
+#' though sentence splitting is unaffected because it is rule-based. In that
+#' situation, use \code{by = "chars"} for windows and \code{min_words = 0} to
+#' disable the short-fragment merge.
+#'
+#' @param x A character vector; each element is one document.
+#' @param by Character; the unit of segmentation, either \code{"sentence"} (ICU
+#'   sentence boundaries), \code{"words"} (fixed-width window in words),
+#'   \code{"chars"} (fixed-width window in characters), or \code{"paragraph"}
+#'   (blank-line separated blocks). If the reason for splitting is a token
+#'   limit, \code{"chars"} is the only unit that means the same thing across
+#'   languages. Defaults to \code{"sentence"}.
+#' @param size Integer; the window size for \code{by = "words"} or
+#'   \code{"chars"}, ignored otherwise. Defaults to \code{NULL}, which uses 50
+#'   words or 200 characters.
+#' @param overlap Integer; the number of words or characters shared between
+#'   consecutive windows. Must be smaller than \code{size}. Defaults to 0.
+#' @param min_words Integer; the length in words below which a fragment is
+#'   merged into the preceding segment. A value of 2 absorbs only one-word
+#'   fragments, such as a bare backchannel ("Right."); raising it to 3 also
+#'   swallows legitimate short sentences such as "It worked.", which is why it
+#'   is not recommended, and 0 merges nothing. Defaults to 2.
+#' @param abbrev A character vector of abbreviations whose periods are
+#'   protected from sentence splitting, written without the trailing period;
+#'   pass \code{character(0)} to disable. Defaults to
+#'   \code{qe_abbreviations()}.
+#' @param ids A vector of document identifiers, one per element of \code{x},
+#'   used as \code{doc_id}. Defaults to \code{NULL}, which numbers the
+#'   documents sequentially.
+#' @return A \code{qe_segments} object (see \code{\link{as_segments}}) with
+#'   columns \code{doc_id}, \code{segid}, \code{text}, \code{n_words},
+#'   \code{n_char} and \code{docname}, and the unit of segmentation recorded as
+#'   an attribute.
+#' @seealso \code{\link{as_segments}} for text you have segmented yourself, and
+#'   \code{\link{read_segments}} for reading transcript files.
 #' @examples
 #' \dontrun{
 #'   seg <- segment_text(interviews, by = "words", size = 80, overlap = 20)
@@ -1082,6 +1792,11 @@ segment_text <- function(x, by = c("sentence", "words", "chars", "paragraph"),
                          abbrev = qe_abbreviations(), ids = NULL) {
   by <- match.arg(by)
   if (!is.character(x)) stop("`x` must be a character vector.", call. = FALSE)
+  # In a non-UTF-8 locale (LC_ALL=C, common on servers), text read from a
+  # file or passed from another package arrives tagged "unknown", and R then
+  # treats each byte as a character: the regex below fails on any non-ASCII
+  # input. Declaring the encoding costs nothing when it is already UTF-8.
+  x <- .declare_utf8(x)
   if (is.null(ids)) ids <- seq_along(x)
   if (length(ids) != length(x))
     stop("`ids` must be the same length as `x`.", call. = FALSE)
@@ -1105,9 +1820,9 @@ segment_text <- function(x, by = c("sentence", "words", "chars", "paragraph"),
   fix_open_bracket <- function(p) {
     if (length(p) < 2) return(p)
     for (i in seq_len(length(p) - 1)) {
-      m <- regmatches(p[i], regexpr("[「『（(“\"']+$", p[i]))
+      m <- regmatches(p[i], regexpr("[\u300c\u300e\uff08(\u201c\"']+$", p[i]))
       if (length(m) && nzchar(m)) {
-        p[i]     <- sub("[「『（(“\"']+$", "", p[i])
+        p[i]     <- sub("[\u300c\u300e\uff08(\u201c\"']+$", "", p[i])
         p[i + 1] <- paste0(m, p[i + 1])
       }
     }
@@ -1202,12 +1917,46 @@ segment_text <- function(x, by = c("sentence", "words", "chars", "paragraph"),
   list(text = txt, speaker = sp)
 }
 
+# 符号化の取り違えは、経路によって現れ方が違う。LC_ALL=C ではバイトがその
+# まま通って黙って壊れ、UTF-8 ロケールでは R が生のエラーを投げる。どの
+# 経路からも同じ説明に落とすための共有部品。
+.enc_mismatch_stop <- function(f, encoding) {
+  stop("read_segments(): '", basename(f), "' could not be read as ",
+       encoding, ". This is what a character-encoding mismatch looks ",
+       "like: rows vanish rather than turning into mojibake, so the ",
+       "loss can be partial and silent. Re-save the file as UTF-8 (in ",
+       "Excel: \"CSV UTF-8\"), or pass encoding = \"CP932\" for a ",
+       "Japanese Windows export.", call. = FALSE)
+}
+
+# 行として読む。readLines(encoding=) は「そう書かれている」と宣言する
+# だけで、BOM も落とさず内容も検査しない。UTF-8 は自分でバイト列を扱い、
+# 他の符号化は接続に変換させる。
+.read_text_lines <- function(f, encoding) {
+  if (grepl("^UTF-8", encoding, ignore.case = TRUE)) {
+    raw <- readBin(f, "raw", file.size(f))
+    if (length(raw) >= 3 &&
+        identical(as.integer(raw[1:3]), c(239L, 187L, 191L)))
+      raw <- raw[-(1:3)]
+    txt <- rawToChar(raw); Encoding(txt) <- "UTF-8"
+    if (!validUTF8(txt)) .enc_mismatch_stop(f, encoding)
+    strsplit(txt, "\r\n|\n|\r")[[1]]
+  } else {
+    con <- file(f, encoding = encoding)
+    on.exit(close(con), add = TRUE)
+    ln <- tryCatch(readLines(con, warn = FALSE),
+                   error = function(e) .enc_mismatch_stop(f, encoding))
+    if (any(is.na(ln)) || (length(ln) && !all(validUTF8(ln[!is.na(ln)]))))
+      .enc_mismatch_stop(f, encoding)
+    ln
+  }
+}
+
 .read_one <- function(f, format, unit, encoding) {
   ext <- tolower(tools::file_ext(f))
   if (format == "auto") format <- ext
   if (format %in% c("txt", "text", "md")) {
-    raw <- paste(readLines(f, warn = FALSE, encoding = encoding),
-                 collapse = "\n")
+    raw <- paste(.read_text_lines(f, encoding), collapse = "\n")
     u <- if (unit == "auto") "paragraph" else unit
     if (u == "line") {
       p <- unlist(strsplit(raw, "\n"))
@@ -1231,7 +1980,7 @@ segment_text <- function(x, by = c("sentence", "words", "chars", "paragraph"),
     return(data.frame(text = p, stringsAsFactors = FALSE))
   }
   if (format %in% c("vtt", "srt")) {
-    ln <- readLines(f, warn = FALSE, encoding = encoding)
+    ln <- .read_text_lines(f, encoding)
     ln <- ln[!grepl("^WEBVTT|^NOTE|^[0-9]+$", ln)]
     is_time <- grepl("-->", ln)
     cue <- cumsum(is_time)
@@ -1248,21 +1997,38 @@ segment_text <- function(x, by = c("sentence", "words", "chars", "paragraph"),
     # 符号化の取り違えは "invalid input" 警告として現れ、行が黙って消える。
     # 警告をエラーに変えて、直し方を書いた上で止める。
     bad_enc <- FALSE
+    # UTF-8 のファイルは encoding = で「そう書かれている」と宣言するだけに
+    # する。fileEncoding = はロケールの符号化へ変換するので、LC_ALL=C では
+    # その変換が日本語で失敗し、正しいファイルまで誤診していた。
+    # 一方 CP932 のような他の符号化は変換しなければ読めないので、そちらは
+    # fileEncoding = を使う。
+    # UTF-8 のファイルは自分でバイト列として読み、BOM を落としてから
+    # 渡す。read.csv(fileEncoding=) はロケールの符号化へ変換するので
+    # LC_ALL=C では日本語が読めず、read.csv(encoding=) は宣言するだけで
+    # BOM を落とさない（Excel の「CSV UTF-8」は BOM を書く）。どちらの
+    # 経路にも寄らず、妥当性は自分で検査する。
+    # 取り違えの現れ方はロケールによって違う。LC_ALL=C ではバイトがそのまま
+    # 通って行が黙って消え、UTF-8 ロケールでは read.csv が生のエラーを投げる。
+    # どちらの経路からも同じ説明に落とす。
+    .enc_stop <- function() .enc_mismatch_stop(f, encoding)
+    .enc_pat <- "invalid input|invalid multibyte|\u4e0d\u6b63\u306a\u5165\u529b"
+
+    # 行として読むところまでを .read_text_lines に任せる。read.csv の
+    # fileEncoding= はロケールの符号化へ変換するので LC_ALL=C では CP932 が
+    # 読めず、encoding= は宣言するだけで BOM を落とさない。どちらにも寄らない。
     d <- withCallingHandlers(
-      utils::read.csv(f, sep = if (format == "tsv") "\t" else ",",
-                      stringsAsFactors = FALSE, fileEncoding = encoding),
+      tryCatch({
+        utils::read.csv(text = .read_text_lines(f, encoding),
+                        sep = if (format == "tsv") "\t" else ",",
+                        stringsAsFactors = FALSE, encoding = "UTF-8")
+      }, error = function(e) {
+        if (grepl(.enc_pat, conditionMessage(e))) .enc_stop() else stop(e)
+      }),
       warning = function(w) {
-        if (grepl("invalid input|invalid multibyte|不正な入力", conditionMessage(w)))
-          bad_enc <<- TRUE
+        if (grepl(.enc_pat, conditionMessage(w))) bad_enc <<- TRUE
         invokeRestart("muffleWarning")
       })
-    if (bad_enc || !nrow(d))
-      stop("read_segments(): '", basename(f), "' could not be read as ",
-           encoding, ". This is what a character-encoding mismatch looks ",
-           "like: rows vanish rather than turning into mojibake, so the ",
-           "loss can be partial and silent. Re-save the file as UTF-8 (in ",
-           "Excel: \"CSV UTF-8\"), or pass encoding = \"CP932\" for a ",
-           "Japanese Windows export.", call. = FALSE)
+    if (bad_enc || !nrow(d)) .enc_stop()
     return(d)
   }
   if (format == "docx") {
@@ -1295,35 +2061,74 @@ segment_text <- function(x, by = c("sentence", "words", "chars", "paragraph"),
        "'. Supported: .txt .docx .vtt .srt .csv .tsv .xlsx.", call. = FALSE)
 }
 
-#' 逐語録・書き出しファイルからセグメント表を読む
+#' Read a segment table from transcripts or exported text files
+#'
+#' @description
+#' Reads one file, a vector of files, or a whole directory of transcripts and
+#' returns a segment table ready for the trajectory functions. Text and Word
+#' files are split into paragraphs, subtitle files into cues, and spreadsheet
+#' or delimited exports are taken one row per segment. Use this whenever the
+#' material already lives in files, rather than assembling a segment table by
+#' hand.
 #'
 #' @details
-#' 推奨する置き方は「1参加者1ファイル、話者交替を空行区切りの段落、
-#' 話者名は `名前:` の接頭辞」である。.docx の逐語録はたいてい既にこの形で
-#' あり、Zoom / Teams / Whisper の .vtt はさらに話者と時刻を持っている。
+#' The recommended layout is one file per participant, one paragraph per
+#' speaker turn separated by a blank line, and a speaker prefix of the form
+#' \code{Name:}. Word transcripts usually arrive in that form already, and
+#' the .vtt files produced by Zoom, Teams, or Whisper additionally carry
+#' speaker labels and time stamps.
 #'
-#' 「1行1セグメント」の .txt は**勧めない**。その形を吐くのは Whisper の
-#' txt 出力だが、あの行は2〜5秒の音声区間であって話者交替でも文でもない。
-#' そのため .txt の既定単位は "line" ではなく "paragraph" であり、
-#' 空行のない多行ファイルには警告が出る。
+#' One segment per line in a .txt file is \strong{not} recommended. Whisper's
+#' plain-text output has that shape, but its lines are two- to five-second
+#' audio spans rather than speaker turns or sentences. The default unit for
+#' .txt is therefore "paragraph" and not "line", and a multi-line file with
+#' no blank lines raises a warning.
 #'
-#' 質的分析ソフトからの書き出し（CSV/Excel）は1行1セグメントなので、
-#' そのまま読める。列名は as_segments() が自動照合する。
+#' Exports from qualitative-analysis software (CSV or Excel) are already one
+#' row per segment and can be read as they stand; \code{\link{as_segments}}
+#' matches their column names automatically.
 #'
-#' @param path      ファイル、ファイルのベクトル、またはディレクトリ
-#' @param format    "auto" または txt/docx/vtt/srt/csv/tsv/xlsx
-#' @param unit      "auto"（txt/docx→paragraph, vtt/srt→cue, 表→row）
-#' @param speaker   行頭の「名前:」を話者列に分離する（既定 TRUE）
-#' @param doc_id    表形式のとき文書ID列名。ファイル群のときは無視
-#'                  （ファイル名が doc_id になる）。
-#' @param pattern   ディレクトリを渡したときのファイル絞り込み
-#' @param recursive ディレクトリを再帰的に探す
-#' @param encoding  ファイル符号化（既定 "UTF-8-BOM"）。R の文書で BOM 除去が
-#'   保証されているのはこの指定だけで、BOM の無いファイルでも正しく動く。
-#'   日本語の CSV を CP932 のまま既定で読むと、該当行が NA になって静かに
-#'   落ちるため、読み込み後に NA があればエラーで止める。
-#' @param ...       as_segments() に渡す
-#' @return qe_segments
+#' Reading .docx requires the \pkg{xml2} package and .xlsx requires
+#' \pkg{readxl}; the other formats need no extra dependency.
+#'
+#' @param path Character; a file, a vector of files, or a directory.
+#' @param format Character; the file format, either \code{"auto"} (taken from
+#'   the file extension) or one of \code{"txt"}, \code{"docx"}, \code{"vtt"},
+#'   \code{"srt"}, \code{"csv"}, \code{"tsv"}, \code{"xlsx"}. Defaults to
+#'   \code{"auto"}.
+#' @param unit Character; the segmentation unit. \code{"auto"} gives paragraphs
+#'   for txt and docx, cues for vtt and srt, and rows for tabular files.
+#'   Defaults to \code{"auto"}.
+#' @param speaker Logical; whether to split a leading \code{"Name:"} off each
+#'   segment into a \code{speaker} column. Defaults to \code{TRUE}.
+#' @param doc_id Character; the name of the document-identifier column in a
+#'   tabular file. Ignored when files are read from disk, where the file name
+#'   becomes the \code{doc_id}. Defaults to \code{NULL}.
+#' @param pattern A regular expression restricting which files are read when
+#'   \code{path} is a directory. Defaults to \code{NULL}, which matches all
+#'   supported extensions.
+#' @param recursive Logical; whether to search the directory recursively.
+#'   Defaults to \code{FALSE}.
+#' @param encoding Character; the file encoding. \code{"UTF-8-BOM"} is the
+#'   only setting R
+#'   documents as guaranteed to strip a byte-order mark, and it
+#'   reads files without one correctly too. A character-encoding mismatch is
+#'   silent rather than obvious: a Shift_JIS/CP932 file read as UTF-8 turns
+#'   the affected rows into NA instead of mojibake, so rows vanish rather than
+#'   look wrong. Any NA surviving the read therefore stops the function with
+#'   an error. \code{"CP932"}, for a Japanese Windows export, works for the
+#'   delimited formats and needs a session whose locale can represent the
+#'   characters, since R converts as it reads; a plain \code{.txt} in that
+#'   encoding has to be converted before it reaches this function. A UTF-8
+#'   file is read without conversion and so does not depend on the locale.
+#'   Defaults to \code{"UTF-8-BOM"}.
+#' @param ... Passed to \code{\link{as_segments}}.
+#' @return A \code{qe_segments} data frame, one row per segment, with columns
+#'   \code{doc_id}, \code{segid}, \code{text}, \code{n_words}, \code{n_char},
+#'   \code{docname} (\code{doc_id.segid}, the name to embed the text under),
+#'   and \code{speaker} where a speaker prefix was found.
+#' @seealso \code{\link{as_segments}}, \code{\link{trajectory_stats}},
+#'   \code{\link{plot_recurrence}}
 #' @export
 read_segments <- function(path, format = "auto", unit = "auto",
                           speaker = TRUE, doc_id = NULL, pattern = NULL,
@@ -1372,6 +2177,7 @@ read_segments <- function(path, format = "auto", unit = "auto",
   }
 
   if (isTRUE(speaker) && "text" %in% names(d)) {
+    d$text <- .declare_utf8(d$text)   # 話者名の切り出しも文字単位で行う
     sp <- .strip_speaker(d$text)
     d$text <- sp$text
     if (any(!is.na(sp$speaker))) d$speaker <- sp$speaker
@@ -1406,24 +2212,62 @@ read_segments <- function(path, format = "auto", unit = "auto",
   list(emb = emb, seg = seg)
 }
 
-#' 分割された文書の軌跡統計
+#' Summarise the path each segmented document takes
 #'
-#' 統計量そのものは新しくない。段数で割った経路長（Toubia らの speed）、
-#' 経路長に対する正味変位の比（circuitousness の逆数）、逐次類似度は、
-#' Toubia ら (2021)、Palominos ら (2024)、Bedi ら (2015) がすでに定義し
-#' 使っている。ここでの寄与は R で同じ検定の作法に載せたことだけである。
+#' @description
+#' Returns one row of path statistics per document: how far a text travels
+#' through the semantic space, how far it ends up from where it started, and
+#' how directly it gets there. Use it once long responses or transcripts have
+#' been segmented, and read it together with \code{\link{trajectory_null}},
+#' which says whether an observed value differs from what the same segments in
+#' any other order would give.
 #'
-#' @param emb   セグメントの埋め込み行列（rownames が docname なら名前で照合）
-#' @param seg   as_segments() の契約を満たす表
-#' @param axis  投影軸（semantic_projection の返り値と同じ長さ）。任意。
-#' @return 文書ごとの data.frame。
-#'   path_length はセグメント間コサイン距離の総和だが、**セグメント数と
-#'   強く相関する**ため単独で解釈してはならない（デモ15では r = .92–.96）。
-#'   step_mean はそれを段数で割ったもの。straightness は正味変位÷経路長で、
-#'   1 に近いほど一方向に進み、0 に近いほど行きつ戻りつしている。
-#'   異なる軌跡が同じ集約値を与えうる（Palominos et al., 2024）ため、
-#'   スカラーと図は必ず併せて報告すること。
-#' @seealso [trajectory_null()], [plot_recurrence()], [plot_arc()]
+#' The statistics themselves are not new. Path length divided by the number of
+#' steps is the speed of Toubia et al. (2021), the ratio of net displacement
+#' to path length is the reciprocal of their circuitousness, and consecutive
+#' similarity is used by Palominos et al. (2024) and Bedi et al. (2015). What
+#' this function adds is an R implementation on the same testing footing as
+#' the rest of the package.
+#'
+#' @param emb A numeric matrix of segment embeddings, one row per segment. When
+#'   its row names are the segment table's \code{docname} values the rows are
+#'   matched by name; otherwise they are matched by position and must already
+#'   be in the table's order.
+#' @param seg A segment table satisfying the \code{\link{as_segments}}
+#'   contract.
+#' @param axis An optional numeric vector of per-segment scores on a projection
+#'   axis, as returned by \code{\link{semantic_projection}}, with one value
+#'   per row of \code{emb}. Adds axis summaries to the output. Defaults to
+#'   \code{NULL}.
+#' @return A data frame with one row per document that has at least two
+#'   segments:
+#'   \describe{
+#'     \item{\code{doc_id}, \code{n_seg}, \code{n_words}}{document identifier,
+#'       number of segments, total words.}
+#'     \item{\code{path_length}}{sum of the cosine distances between
+#'       consecutive segments. Longer documents give longer paths whatever
+#'       the text does, so this correlates with \code{n_seg} and must not be
+#'       interpreted on its own; use \code{step_mean} or
+#'       \code{straightness} instead.}
+#'     \item{\code{step_mean}}{path length divided by the number of steps.}
+#'     \item{\code{net_displacement}}{cosine distance from the first segment
+#'       to the last.}
+#'     \item{\code{straightness}}{net displacement divided by path length.
+#'       Near 1 the document moves in one direction; near 0 it doubles back.}
+#'   }
+#'   When \code{axis} is supplied, the columns \code{axis_mean},
+#'   \code{axis_sd}, \code{axis_range}, \code{axis_start} and
+#'   \code{axis_end} are appended. Documents with a single segment are
+#'   dropped.
+#' @details
+#' Different trajectories can yield identical aggregates (Palominos et al.,
+#' 2024), so report these scalars alongside a display rather than in place of
+#' one: \code{\link{plot_arc}} and \code{\link{plot_recurrence}} show the shape
+#' they summarise. Note also that no statistic here resolves an individual
+#' transition. See \code{\link{trajectory_null}} for the arithmetic bound that
+#' makes a single step untestable in short documents.
+#' @seealso \code{\link{trajectory_null}}, \code{\link{plot_recurrence}},
+#'   \code{\link{plot_arc}}
 #' @export
 trajectory_stats <- function(emb, seg, axis = NULL) {
   a <- .align_emb(emb, seg); emb <- a$emb; seg <- a$seg
@@ -1452,29 +2296,68 @@ trajectory_stats <- function(emb, seg, axis = NULL) {
   }))
 }
 
-#' 軌跡統計の帰無分布（文書内で段の順序を入れ替える）
+#' Test a trajectory statistic against reorderings of the same document
 #'
-#' 経路長や直進度は、それ単独では大きいのか小さいのか判定できない。
-#' 同じ段を無作為な順序で並べ替えれば、同じ段数・同じ語数・同じ内容を
-#' 保ったまま「順序だけを壊した」比較対象が得られる。観測値がこの分布の
-#' どこに落ちるかが、順序が担っている情報の量である。局所的に一貫した
-#' 語りは、並べ替えた自分より短い距離しか動かないはずである。
+#' @description
+#' A path length or a straightness value cannot be called large or small on
+#' its own. Reordering a document's own segments holds the number of
+#' segments, the word count and the content fixed while destroying the order,
+#' which gives the value the statistic would take if the sequence carried
+#' nothing. Where the observed value falls in that distribution is how much
+#' the ordering is doing: a locally coherent narrative should travel less
+#' than its own reorderings.
 #'
-#' \code{stat = "far_mean"} は、再帰プロットが見せる構造をそのまま検定する。
-#' 語りの上で lag_min 段以上離れた対どうしの平均コサインを取り、順序を
-#' 並べ替えた分布と比べる。並べ替えても類似度の値の集合は変わらないので、
-#' 動くのは「どの対が近くに来るか」だけである。観測値が帰無より**高い**なら
-#' 前の話題への回帰、**低い**なら話題の転換である。plot_recurrence() で
-#' 目に付いたブロックが偶然かどうかは、この統計量で決める。
+#' \code{stat = "far_mean"} tests what a recurrence plot displays. It takes
+#' the mean cosine between segments at least \code{lag_min} positions apart
+#' and compares it with the same reorderings. Reordering leaves the set of
+#' similarities untouched and changes only which pairs are near one another
+#' in the narrative, so this null asks precisely whether the ordering creates
+#' the structure on the plot. An observed value \emph{above} the null is a
+#' return to earlier material and one \emph{below} it a topic shift; use it
+#' to decide whether a block that caught the eye in
+#' \code{\link{plot_recurrence}} is more than chance.
 #'
-#' @param emb    セグメントの埋め込み行列
-#' @param seg    as_segments() の契約を満たす表
-#' @param n_perm 並べ替え回数（既定 999）
-#' @param stat   評価する統計量（"path_length" / "step_mean" / "straightness"
-#'   / "far_mean"）
-#' @param lag_min stat = "far_mean" で「離れている」とみなす最小の段差（既定 3）
-#' @return 文書ごとの data.frame(doc_id, n_seg, observed, null_mean, z, p)。
-#'   p は両側で、(#{|null - mean| >= |obs - mean|} + 1) / (n_perm + 1)。
+#' @param emb A numeric matrix of segment embeddings, one row per segment;
+#'   rows are matched to the table by \code{docname} where possible, otherwise
+#'   by position (see \code{\link{trajectory_stats}}).
+#' @param seg A segment table satisfying the \code{\link{as_segments}}
+#'   contract.
+#' @param n_perm Integer; the number of reorderings. Defaults to 999.
+#' @param stat Character; the statistic to evaluate, either
+#'   \code{"path_length"}, \code{"step_mean"}, \code{"straightness"} or
+#'   \code{"far_mean"}. Defaults to \code{"path_length"}.
+#' @param lag_min Integer; for \code{stat = "far_mean"}, the smallest
+#'   separation in segment positions that counts as distant. Defaults to 3.
+#' @return A data frame with one row per document of at least three segments
+#'   and columns \code{doc_id}, \code{n_seg}, \code{observed},
+#'   \code{null_mean}, \code{z} (the observed value in standard deviations of
+#'   the null) and \code{p}. The p value is two-sided: the number of
+#'   reorderings with |null - null_mean| >= |observed - null_mean|, plus one,
+#'   divided by \code{n_perm + 1}. Shorter documents are dropped, as are
+#'   documents with no pair at least \code{lag_min} apart when
+#'   \code{stat = "far_mean"}.
+#' @details
+#' \strong{The resolution of a single transition is fixed by arithmetic, so
+#' this function tests at the document level only.} Reordering makes each
+#' adjacent pair a random pair drawn from that document's own n(n - 1)/2
+#' pairwise distances, and that set is the whole null distribution available
+#' for one step. The smallest attainable p for a document of n segments is
+#' therefore 2/(n^2 - n + 2): .14 at four segments, .045 at seven and .03 at
+#' eight, while a six-segment document cannot reach .05 at all. The ceiling
+#' is known before the data are seen. Do not read a non-significant result
+#' from a short document as evidence that its ordering carries nothing, and
+#' do not attempt a verdict on an individual transition at the lengths a
+#' survey returns, where the arithmetic above puts the answer out of reach
+#' before any text is embedded.
+#'
+#' For \code{stat = "far_mean"} the count of distant pairs falls away quickly
+#' in short documents: at the default \code{lag_min} a five-segment document
+#' has three of them and a four-segment one has a single pair, so the mean is
+#' not worth reading below about six segments.
+#' Permutation is within document: documents are tested independently and the
+#' p values are not corrected across them.
+#' @seealso \code{\link{trajectory_stats}}, \code{\link{plot_recurrence}},
+#'   \code{\link{plot_arc}}
 #' @export
 trajectory_null <- function(emb, seg, n_perm = 999, stat = "path_length",
                             lag_min = 3) {
@@ -1513,22 +2396,67 @@ trajectory_null <- function(emb, seg, n_perm = 999, stat = "path_length",
   }))
 }
 
-#' 再帰定量化（RQA）: 類似度行列を固定再帰率で二値化して要約する
+#' Quantify recurrence in a segmented document
 #'
-#' 埋め込みベクトルはそれ自体が状態なので、遅延埋め込み再構成は不要で
-#' ある（m = 1, τ = 1）。これは文章に RQA を当てるときの最大の人工物源を
-#' 取り除く。閾値は固定再帰率で決める——プロバイダごとにコサインの
-#' 尺度が違い、文書ごとに長さが違うため、絶対閾値では比較できない。
+#' @description
+#' Recurrence quantification analysis (RQA) for embedded text. The segment
+#' similarity matrix is binarised at a fixed recurrence rate and the
+#' resulting pattern of recurrent points is summarised by its diagonal and
+#' vertical lines. Use it on documents long enough to contain repeated
+#' passages; at the lengths a survey returns the line-based columns are
+#' undefined (see Details).
 #'
-#' @param emb  セグメントの埋め込み行列
-#' @param seg  as_segments() の契約を満たす表
-#' @param rr   目標再帰率（既定 .05）
-#' @param lmin 線とみなす最小長（既定 2）
-#' @return 文書ごとの data.frame(doc_id, n_seg, threshold, RR, DET, LAM, L,
-#'   L_max, TT, ENTR)。RR は再帰率、DET は対角線に乗る再帰の割合（同じ話題を
-#'   同じ順序で辿り直す度合い）、LAM は垂直線の割合（一つの話題に留まる
-#'   度合い）、L は反復挿話の平均長、TT は留まる長さの平均、ENTR は
-#'   対角線長分布のエントロピー。
+#' No delay embedding is required here. An embedding vector is already the
+#' state of the system, so m = 1 and tau = 1, which removes the largest
+#' source of artefact in applying RQA to text. The threshold is set from a
+#' fixed recurrence rate rather than an absolute cosine, because the cosine
+#' scale differs between providers and the number of segments differs between
+#' documents, so no absolute cut-off is comparable across either.
+#'
+#' @param emb A numeric matrix of segment embeddings, one row per segment;
+#'   rows are matched to the table by \code{docname} where possible, otherwise
+#'   by position.
+#' @param seg A segment table satisfying the \code{\link{as_segments}}
+#'   contract.
+#' @param rr Numeric; the target recurrence rate. The threshold is the
+#'   corresponding quantile of that document's off-diagonal similarities.
+#'   Defaults to .05.
+#' @param lmin Integer; the shortest run of recurrent points counted as a line.
+#'   Defaults to 2.
+#' @return A data frame with one row per document of at least four segments:
+#'   \describe{
+#'     \item{\code{doc_id}, \code{n_seg}, \code{threshold}}{document
+#'       identifier, number of segments, cosine cut-off used.}
+#'     \item{\code{RR}}{recurrence rate actually attained.}
+#'     \item{\code{DET}}{determinism: share of recurrent points lying on
+#'       diagonal lines, that is, how far the document retraces the same
+#'       topics in the same order.}
+#'     \item{\code{LAM}}{laminarity: share lying on vertical lines, that is,
+#'       how far it stays on one topic.}
+#'     \item{\code{L}, \code{L_max}}{mean and longest diagonal line, the
+#'       average and maximum length of a repeated episode.}
+#'     \item{\code{TT}}{trapping time: mean vertical line length.}
+#'     \item{\code{ENTR}}{Shannon entropy of the diagonal line-length
+#'       distribution.}
+#'   }
+#'   \code{DET} and \code{LAM} are 0 and the remaining line-based columns are
+#'   NA when the document contains no line of at least
+#'   \code{lmin} points.
+#' @details
+#' \strong{The line-based measures need documents an order of magnitude
+#' longer than a typical survey response.} At the handful of segments a
+#' survey answer yields, the recurrence matrix contains no diagonal or
+#' vertical line at all, so DET,
+#' LAM, L, TT and ENTR carry no information: the first two come back as 0
+#' and the rest as NA. They are provided
+#' because longer material makes them computable, not because this package
+#' has evidence that they measure anything at survey lengths; interview
+#' transcripts are where they would first become usable. At shorter lengths use
+#' \code{\link{plot_recurrence}}, which needs no threshold and stays readable,
+#' and \code{\link{trajectory_null}} with \code{stat = "far_mean"}, which tests
+#' the same structure without requiring lines.
+#' @seealso \code{\link{plot_recurrence}}, \code{\link{trajectory_null}},
+#'   \code{\link{trajectory_stats}}
 #' @export
 recurrence_stats <- function(emb, seg, rr = 0.05, lmin = 2) {
   a <- .align_emb(emb, seg); emb <- a$emb; seg <- a$seg
@@ -1563,32 +2491,59 @@ recurrence_stats <- function(emb, seg, rr = 0.05, lmin = 2) {
 
 # ── 軌跡の図 ─────────────────────────────────────────────────
 
-#' 概念再帰プロット（Angus et al., 2012）
+#' Plot conceptual recurrence for one document
 #'
-#' **分割した文書に対して最初に見るべき図である。** セル (i, j) は**全次元**の
-#' 埋め込み同士のコサイン類似度である。次元削減は一切なく、両軸はセグメントの
-#' 位置にすぎない。2次元投影が距離を歪めるという問題 (Chari & Pachter, 2023)
-#' をそもそも踏まない。plot_trajectory() と違い、読むときに幾何の但し書きが
-#' 要らない。閾値は掛けない（Angus に倣い、Eckmann/Marwan の二値化はしない）。
+#' @description
+#' Displays the full segment-by-segment cosine similarity matrix of a single
+#' document (Angus et al., 2012). \strong{This is the first display to reach
+#' for once a document has been segmented.} Cell (i, j) is the cosine
+#' similarity between two segment embeddings computed in \emph{all}
+#' dimensions: there is no dimension reduction anywhere, and both axes carry
+#' nothing but segment position, so the distortion a two-dimensional
+#' projection introduces (Chari and Pachter, 2023) never arises. Unlike
+#' \code{\link{plot_trajectory}}, nothing here has to be read with a geometric
+#' caveat attached. No threshold is applied, following Angus rather than the
+#' Eckmann/Marwan binarisation.
 #'
-#' 目で拾った構造は trajectory_null() に掛けること。手元の材料では、この図が
-#' 見せる話題の**転換**は段の順序の並べ替えに耐えたが、**回帰**は耐えなかった。
-#' どちらを論文に書くかを決める前に知っておくべき差である。
+#' @section Reading the plot:
+#' Blocks along the diagonal are stretches that stay on one topic. Blocks
+#' away from the diagonal are returns to earlier material. A bright vertical
+#' stripe is an early passage that everything afterwards keeps referring back
+#' to. Dark regions are new material.
 #'
-#' 読み方: 対角付近のまとまり = 一つの話題が続く区間。対角から離れた
-#' まとまり = 前の話題への回帰。明るい縦筋 = その後ずっと参照され続ける
-#' 早い時点の一節。暗い領域 = 新しい話。
+#' Structure picked out by eye should then be tested with
+#' \code{\link{trajectory_null}}. A display can make shifts and returns
+#' equally visible while only one of them survives reordering of the
+#' segments, a difference worth knowing before deciding
+#' which of the two to write up.
 #'
-#' @param emb    セグメントの埋め込み行列
-#' @param seg    as_segments() の契約を満たす表
-#' @param doc    描く文書。複数ある場合は必須。
-#' @param anchor 色の基準。"quantile"（既定）は非対角セルの分位で
-#'   両端を決める。商用APIのコサインは0.6〜0.95の狭い帯に集まるため、
-#'   0〜1 で塗ると図が一色になる。"range" は実測の最小最大。
-#' @param probs  anchor = "quantile" のときの下側・上側確率
-#' @param title  図題
-#' @return ggplot（表示もする）
-#' @seealso [trajectory_null()], [plot_arc()], [recurrence_stats()]
+#' @param emb A numeric matrix of segment embeddings, one row per segment;
+#'   rows are matched to the table by \code{docname} where possible, otherwise
+#'   by position.
+#' @param seg A segment table satisfying the \code{\link{as_segments}}
+#'   contract.
+#' @param doc Character; which document to draw. Required when the table
+#'   holds more than one, since a recurrence plot is a within-document
+#'   object; the function stops rather than pooling documents. Defaults to
+#'   \code{NULL}.
+#' @param anchor Character; how the colour scale is anchored.
+#'   \code{"quantile"} takes the two ends from quantiles of the off-diagonal
+#'   cells; commercial APIs return cosines packed into a narrow band whose
+#'   position differs by provider, so a scale running from 0 to 1 paints the
+#'   whole plot one colour. \code{"range"} uses the observed minimum and maximum instead.
+#'   Defaults to \code{"quantile"}.
+#' @param probs A numeric vector of length 2 giving the lower and upper
+#'   probabilities used when \code{anchor = "quantile"}. Defaults to
+#'   \code{c(.02, .98)}.
+#' @param title Character; the plot title. Defaults to \code{NULL}, which
+#'   prints \code{"Conceptual recurrence:"} followed by the document name.
+#' @return A \pkg{ggplot2} object (printed when called at the top level): a
+#'   raster of the n by n similarity matrix on a blue-white-red scale centered at the
+#'   median off-diagonal similarity, with every segment numbered on both axes
+#'   so that cells can be traced back to the text, and a fixed 1:1 aspect
+#'   ratio. Documents with fewer than three segments raise an error.
+#' @seealso \code{\link{trajectory_null}}, \code{\link{plot_arc}},
+#'   \code{\link{recurrence_stats}}
 #' @export
 plot_recurrence <- function(emb, seg, doc = NULL,
                             anchor = c("quantile", "range"),
@@ -1635,31 +2590,75 @@ plot_recurrence <- function(emb, seg, doc = NULL,
   p
 }
 
-#' 意味の弧: セグメントごとの量を語りの位置に対して描く
+#' Plot a semantic arc across narrative position
 #'
-#' 縦軸はいずれも**全次元**で計算される。横軸はセグメントの位置しか
-#' 担わないので、2次元投影の歪みを踏まない。
+#' @description
+#' Draws how one per-segment quantity moves from the start of a document to
+#' its end: a score on an anchor axis, the distance from the preceding
+#' segment, or the distance from everything said so far. Every vertical
+#' quantity is computed in \emph{all} dimensions and the horizontal axis
+#' carries nothing but segment position, so the display is free of the
+#' distortion a two-dimensional projection introduces. Together with
+#' \code{\link{plot_recurrence}} it is what to look at before any projected
+#' display.
 #'
-#' @param emb  セグメントの埋め込み行列
-#' @param seg  as_segments() の契約を満たす表
-#' @param y    "projection"（high/low アンカーへの投影）、"step"（直前との
-#'   コサイン距離＝Toubia らの speed を段ごとに解いたもの）、
-#'   "forward_flow"（先行する全セグメントとの平均距離＝Gray et al., 2019）
-#' @param high,low  y = "projection" のときのアンカー埋め込み行列
-#' @param x    "auto"（1文書なら position、複数なら relative）/ "position" /
-#'   "relative"（(t-0.5)/T）
-#' @param smooth   loess の平滑線。"auto"（既定）は最短文書が10段以上の
-#'   ときだけ引く——数点に loess を当てても形は読めない。
-#' @param null_band 段の順序を入れ替えた帰無分布（0 なら計算しない。999 が目安）。
-#'   y = "step" / "forward_flow" では位置ごとの 2.5–97.5% 帯を描く。
-#'   y = "projection" では**帯を描かない**——投影値は順序に依存しないので、
-#'   並べ替えても値の集合は変わらず、位置ごとの帯は定義上まったいらになり、
-#'   何も検定しない。代わりに位置と投影の順位相関に対する並べ替え p を
-#'   副題に出す（弧に傾きがあるかを問う、意味のある帰無仮説である）。
-#'   複数文書に帯を描くときは文書ごとに面を分ける（重ねると読めない）。
-#' @param center  "auto"（1文書は生値、複数は文書内平均中心化）/ "none" / "mean"
-#' @param title  図題
-#' @return ggplot（表示もする）
+#' @param emb A numeric matrix of segment embeddings, one row per segment;
+#'   rows are matched to the table by \code{docname} where possible, otherwise
+#'   by position.
+#' @param seg A segment table satisfying the \code{\link{as_segments}}
+#'   contract.
+#' @param y Character; the quantity on the vertical axis.
+#'   \code{"projection"} projects each segment onto the axis running from the
+#'   low to the high anchors; \code{"step"} is the cosine distance from the
+#'   previous segment, the speed of Toubia et al. (2021) resolved one step at
+#'   a time; \code{"forward_flow"} is the mean distance from all preceding
+#'   segments (Gray et al., 2019). The first segment is NA for the last two.
+#'   Defaults to \code{"projection"}.
+#' @param high,low Numeric matrices of anchor embeddings defining the two
+#'   poles of the axis, required when \code{y = "projection"} and used as in
+#'   \code{\link{semantic_projection}}. Embed the phrases that name each
+#'   pole. Default to \code{NULL}.
+#' @param x Character; the horizontal axis, either \code{"auto"} (segment
+#'   position for a single document, relative position for several),
+#'   \code{"position"}, or \code{"relative"}, which is (t - 0.5)/T and so puts
+#'   documents of different lengths on a common scale. Defaults to
+#'   \code{"auto"}.
+#' @param smooth Logical, or the string \code{"auto"}; whether to add a loess
+#'   curve. \code{"auto"} draws one only when the shortest document has at
+#'   least ten segments, a loess through a handful of points having no
+#'   readable shape. Defaults to \code{"auto"}.
+#' @param null_band Integer; the number of random reorderings of the segments
+#'   used to build a null, where 0 computes none and 999 is a
+#'   reasonable value. For \code{y = "step"} and \code{y = "forward_flow"} a
+#'   pointwise 2.5-97.5\% band is shaded. For \code{y = "projection"}
+#'   \strong{no band is drawn}: projection scores do not depend on order, so
+#'   reordering leaves the set of values untouched, and a pointwise band
+#'   would be flat by construction and would test nothing. A permutation p
+#'   for the rank correlation between position and projection is printed in
+#'   the subtitle instead, which asks the question that is meaningful here,
+#'   namely whether the arc has a slope. When bands are drawn for several
+#'   documents the panels are faceted, being unreadable when overlaid.
+#'   Defaults to 0.
+#' @param center Character; how the values are centered, either \code{"auto"}
+#'   (raw values for a single document, centered on the document's own mean
+#'   when several are drawn), \code{"none"}, or \code{"mean"}. Defaults to
+#'   \code{"auto"}.
+#' @param title Character; the plot title. Defaults to \code{NULL}, which
+#'   prints \code{"Semantic arc"}.
+#' @return A \pkg{ggplot2} object (printed when called at the top level): one
+#'   line per document with each segment marked by a numbered open circle, the
+#'   optional loess curve, and either the shaded null band or the trend test
+#'   in the subtitle.
+#' @details
+#' The shaded bands are pointwise and uncorrected, so they describe the
+#' document rather than test it. In particular they do not license a claim
+#' about any individual step: reordering makes each adjacent pair a random
+#' pair from that document's own pairwise distances, which floors the
+#' attainable p for a document of n segments at 2/(n^2 - n + 2), or .14 at
+#' four segments and .03 at eight. See \code{\link{trajectory_null}} for the
+#' tests that remain available at the document level.
+#' @seealso \code{\link{plot_recurrence}}, \code{\link{trajectory_null}},
+#'   \code{\link{trajectory_stats}}
 #' @export
 plot_arc <- function(emb, seg, y = c("projection", "step", "forward_flow"),
                      high = NULL, low = NULL,
@@ -1799,12 +2798,6 @@ plot_arc <- function(emb, seg, y = c("projection", "step", "forward_flow"),
             ve = sum(pc$sdev[1:2]^2) / sum(pc$sdev^2))
 }
 
-.rotate_to <- function(xy, v) {
-  Y  <- scale(xy, scale = FALSE)
-  th <- atan2(sum(v * Y[, 2]), sum(v * Y[, 1]))
-  Y %*% matrix(c(cos(th), sin(th), -sin(th), cos(th)), 2)
-}
-
 .ax_lab <- function(layout, k)
   if (identical(layout, "pca")) paste0("PC", k) else paste("Dimension", k)
 
@@ -1838,36 +2831,62 @@ plot_arc <- function(emb, seg, y = c("projection", "step", "forward_flow"),
   stats::prcomp(M)$x[, seq_len(k), drop = FALSE]
 }
 
-#' 射影の忠実さを測る（矢印の図を信じてよいかの診断）
+#' Measure how faithfully a two-dimensional layout keeps the distances
 #'
-#' 2次元への射影は距離を歪める。どれだけ歪むかは場合による——測れば済む。
-#' 全次元でのペア距離と、平面上でのペア距離の順位相関（Shepard 相関）を
-#' 文書ごとに返す。
+#' @description
+#' Diagnostic for whether an arrow plot can be believed. Projecting to two
+#' dimensions distorts distances, and how much it distorts them in any given
+#' case is an empirical question, so this measures it. For each document it
+#' returns the rank correlation between the pairwise distances computed in
+#' all dimensions and the pairwise distances on the page (a Shepard
+#' correlation), together with the variance the plane holds.
 #'
-#' **生の値だけを見てはいけない。** 分散説明率も Shepard 相関も、
-#' セグメント数 n が小さいほど機械的に高くなる。中心化後のランクは
-#' n-1 なので、n=3 なら平面は常に厳密（分散 100%、相関 1.00）、
-#' n=4 でも等方な点で 2/(n-1) = 67% が出る。そこで同じ n を全文書の
-#' プールから無作為抽出した帰無を併せて返す。読むべきは観測と帰無の差で
-#' あって、観測の絶対値ではない。
+#' \strong{Never read the observed values on their own.} Both the variance
+#' explained and the Shepard correlation rise mechanically as the number of
+#' segments n gets smaller: centered points have rank n - 1, so at n = 3 the
+#' plane is always exact (100\% of variance, correlation 1.00), and even at
+#' n = 4 isotropic points return 2/(n - 1) = 67\%. The function therefore
+#' also returns a null built by drawing the same number of segments at random
+#' from the pool of all documents. What to read is the gap between observed
+#' and null, not the size of the observed value.
 #'
-#' 実測（デモ15、40名の逐語、中央値4セグメント）では、文書ごとの射影は
-#' 分散 .70／相関 .92 を示すが、帰無は .74／.86 で、観測が帰無を上回った
-#' 文書は 35 中 16 と偶然の範囲だった。他人のセグメントを寄せ集めても
-#' 同じ数字が出る。一方、共通射影は分散 .14 に対し等方期待 .01 で、
-#' 実質的な構造はこちらにある。**比較したい文書が複数あるなら
-#' scope = "shared" を使うこと。**
+#' A per-document layout of a handful of segments will therefore look
+#' excellent on both measures while a random pile of other people's segments
+#' looks just as good, which is what the null exposes. A shared layout over
+#' many documents has far more points than dimensions, so its variance and
+#' correlation are low in absolute terms yet stand well clear of the
+#' isotropic expectation. \strong{Use \code{scope = "shared"} whenever
+#' several documents are to be compared.}
 #'
-#' @param emb   セグメントの埋め込み行列
-#' @param seg   as_segments() の契約を満たす表
-#' @param scope "document"（文書ごとに配置）/ "shared"（全体で一つの配置）
-#' @param layout "mds"（既定・非計量MDS）/ "pca"。MDS は距離の順位を目的関数に
-#'   するので、次元数が点数を大きく超える埋め込みでは PCA より平面が忠実に
-#'   なる。var_2d は PCA でしか定義されない（MDS には分散説明率がない）ので、
-#'   MDS では NA が入る。忠実さは layout によらず shepard で読む。
-#' @param null_reps 帰無の反復数。0 で帰無を計算しない（既定 200）
-#' @return 文書ごとの data.frame(doc_id, n_seg, layout, var_2d, var_null,
-#'   shepard, shepard_null)
+#' @param emb A numeric matrix of segment embeddings, one row per segment;
+#'   rows are matched to the table by \code{docname} where possible, otherwise
+#'   by position.
+#' @param seg A segment table satisfying the \code{\link{as_segments}}
+#'   contract.
+#' @param scope Character; how the layout is solved. \code{"document"} solves a
+#'   separate layout for each document; \code{"shared"} solves one layout for
+#'   the whole pool and reads each document's rows out of it, which is what
+#'   makes panels comparable with one another. Defaults to \code{"document"}.
+#' @param layout Character; either \code{"mds"} (non-metric MDS) or
+#'   \code{"pca"}. MDS
+#'   optimises the rank order of the distances, so it gives a more faithful
+#'   plane than PCA when the number of dimensions far exceeds the number of
+#'   points. \code{var_2d} is defined only for PCA, MDS having no variance
+#'   explained, and is NA under MDS; fidelity is read from \code{shepard}
+#'   under either. Defaults to \code{"mds"}.
+#' @param null_reps Integer; the number of null draws, where 0 skips the
+#'   null and returns NA in its columns. Defaults to 200.
+#' @return A data frame with one row per document of at least three segments
+#'   and columns \code{doc_id}, \code{n_seg}, \code{layout}, \code{var_2d}
+#'   (proportion of variance in the first two components, PCA only),
+#'   \code{var_null}, \code{shepard} (Spearman correlation between measured
+#'   and plotted distances) and \code{shepard_null}. Under
+#'   \code{scope = "shared"} with \code{layout = "pca"}, \code{var_null} is
+#'   the isotropic expectation 2/(N - 1) rather than a resampled value,
+#'   because the shared plane is fixed by the whole cloud and does not move
+#'   when segments are redrawn.
+#' @seealso \code{\link{plot_trajectory}}, \code{\link{plot_recurrence}},
+#'   \code{\link{plot_arc}}
 #' @export
 trajectory_fidelity <- function(emb, seg, scope = c("document", "shared"),
                                 layout = c("mds", "pca"), null_reps = 200) {
@@ -1917,69 +2936,127 @@ trajectory_fidelity <- function(emb, seg, scope = c("document", "shared"),
   }))
 }
 
-#' 意味空間上の軌跡を矢印で描く
+#' Plot a document's trajectory through semantic space
 #'
-#' 発言の順に点を結び、矢印で向きを示す。これは「どの順に、どちらへ動いたか」
-#' を見るための図である。
+#' @description
+#' Joins the segments of a document in the order they were spoken or written
+#' and marks the direction of travel with arrows, so that where a text went,
+#' and in what order, can be seen at a glance.
 #'
-#' **最初に見る図ではない。** 投影を経ない plot_recurrence() と plot_arc() を
-#' 先に見ること。3つの表示のうち、読みながら幾何の但し書きを付けて回らねば
-#' ならないのはこれだけである。但し書きの要る図は、データの第一印象を作る
-#' 道具として劣る。
+#' \strong{This is not the display to look at first.} Look at
+#' \code{\link{plot_recurrence}} and \code{\link{plot_arc}} first, neither of
+#' which passes through a projection. Of the three displays this is the only
+#' one that has to be read with a geometric caveat held in mind throughout, and
+#' a display that needs caveats is a poor instrument for forming a first
+#' impression of the data.
 #'
-#' **矢印が担う順序は射影で歪まない。歪むのは距離と角度である。**
-#' したがって「3番目でいったん戻って、そこから一方向に進んだ」という読みは
-#' この図から取ってよい。「Aさんのほうが長く動いた」という読みは取っては
-#' ならない——それは全次元で測る量で、trajectory_stats() が返す。
-#' 図の副題に、その射影がどれだけ距離を保っているか（Shepard 順位相関）と、
-#' 同じ本数を無作為に取ったときの帰無を並べて出す。読むのは差のほうである。
+#' @section What the picture supports:
+#' \strong{The order the arrows carry is exact; what the projection distorts
+#' is distance and angle.} A reading such as "it doubled back at the third
+#' segment and then moved in one direction" may be taken from this plot. A
+#' reading such as "A moved further than B" may not: that is a quantity
+#' measured in all dimensions, and \code{\link{trajectory_stats}} is what
+#' returns it. The subtitle prints how much of the distance structure the
+#' projection preserves (a Shepard rank correlation) beside the null obtained
+#' by drawing the same number of segments at random. Read the difference
+#' between them, not the observed number.
 #'
-#' **距離は読めなくはない。読み方の問題である。** 3社とも単位ノルムの
-#' ベクトルを返すので、全次元での Euclid 距離はコサイン類似度 s に
-#' d = sqrt(2(1-s)) で厳密に対応する（順位相関は正確に -1）。中心化は
-#' 平行移動なので距離を変えない。つまり平面上の遠近は、他のすべての分析が
-#' 使っているコサインの順序をそのまま表している。ただし目盛りは非線形で、
-#' s が 1 に近いほど間隔が伸びる（s = .95 付近では .05 の差が d を .13、
-#' s = .50 付近では .05 と、2.7 倍の開きがある）。似た者どうしの差は
-#' 誇張され、離れた者どうしの差は圧縮される。順位は読んでよく、
-#' 比は読んではならない。
+#' \strong{Distances are not unreadable; they have to be read as ranks.} All
+#' three providers return unit-norm vectors, so Euclidean distance in all
+#' dimensions corresponds exactly to cosine similarity s as
+#' d = sqrt(2(1 - s)), their rank correlation being exactly -1, and centering
+#' is a translation and leaves distances unchanged. Near and far on the page
+#' therefore reproduce the cosine ordering that every other analysis here
+#' uses. The scale, however, is non-linear: because d is the square root of
+#' 2(1 - s), it stretches as s approaches 1, so the same step in similarity
+#' spans several times more of the page between near segments than between
+#' distant ones. Differences among similar segments are exaggerated and
+#' differences among distant ones compressed. Read the ranks; do not read the
+#' ratios.
 #'
-#' 射影は既定で**文書ごと**に計算する。ただし n が小さいと説明率も順位相関も
-#' 機械的に上がるので（n = 3 なら常に厳密）、生の値を忠実さの証拠と読んでは
-#' ならない。複数の文書を見比べるなら scope = "shared" を使う。共通射影は
-#' 基底も軸の範囲もプール全体から決めるので、1文書ずつ描いて並べたパネルが
-#' そのまま比較できる。詳しくは trajectory_fidelity() を参照。
+#' @section Choosing the scope:
+#' The layout is solved per document by default. With few segments both the
+#' variance explained and the rank correlation rise mechanically (at n = 3 a
+#' plane is always exact), so the raw fidelity figures are not evidence that
+#' the map can be trusted. To compare documents use \code{scope = "shared"}:
+#' the basis and the axis limits are then taken from the whole pool, so
+#' panels drawn one document at a time can be laid side by side and read
+#' against one another. See \code{\link{trajectory_fidelity}} for the
+#' diagnostic.
 #'
-#' @param emb    セグメントの埋め込み行列
-#' @param seg    as_segments() の契約を満たす表
-#' @param doc    描く文書。NULL なら全文書（scope に従う）。
-#' @param scope  "document"（既定・文書ごとの配置）/ "shared"（共通の配置）
-#' @param layout "mds"（既定・非計量MDS）/ "pca"。MDS は距離の順位を目的関数に
-#'   するので、次元数が点数を大きく超える埋め込みでは平面が忠実になる。
-#'   ただし1文書ぶんの数点に当てても意味はない（4点は2次元に厳密に置ける）。
-#'   比較したい文書が複数あるなら scope = "shared" と併せて使うこと。
-#' @param zoom  scope = "shared" のとき、軸の範囲を描く文書に合わせる（既定
-#'   FALSE = プール全体）。基底は共通のままなので位置の意味は変わらないが、
-#'   範囲が文書ごとに違うので、パネル間で位置を読み比べることはできなくなる。
-#'   動きの小さい文書が一点に潰れて形が読めないときに使う。
-#' @param axis  事前指定の方向（埋め込みと同じ長さの数値ベクトル。高低アンカーの
-#'   差ベクトルなど）。渡すと、その方向が x 軸に最も沿う向きへ配置を回す。
-#'   回転は距離も角度も変えないので忠実さには影響せず、軸の解釈だけが変わる。
-#'   プロバイダ間で符号や向きが揃わない問題も、これで解消する。
-#' @param arrows 進行方向の矢印を描く（既定 TRUE）
-#' @param label  セグメント番号を書く（既定 TRUE）
-#' @param text    セグメント本文を図の右に並記する（既定 FALSE）。点と語りの
-#'   対応を追えるようになるが、文書は一つに限られ、セグメントが text_max を
-#'   超えると収まらないので黙って降りる。patchwork が要る。
-#' @param text_wrap 並記する本文の折り返し幅（文字数）
-#' @param text_max  並記に応じるセグメント数の上限（既定 8）
-#' @param title  図題
-#' @param compact 小さく描く（並置用に文字と点を縮め、副題を1行にする）
-#' @param null_reps 副題に出す帰無の反復数。0 で計算しない（既定 200）
-#' @param fidelity 忠実さを副題に刷る（既定 TRUE）。共通射影のパネルを並べる
-#'   ときは同じ数字が繰り返されるので、FALSE にして図の注に一度書くとよい。
-#' @return ggplot（表示もする）
-#' @seealso [trajectory_fidelity()], [trajectory_stats()], [plot_recurrence()]
+#' @param emb A numeric matrix of segment embeddings, one row per segment;
+#'   rows are matched to the table by \code{docname} where possible, otherwise
+#'   by position.
+#' @param seg A segment table satisfying the \code{\link{as_segments}}
+#'   contract.
+#' @param doc A character vector naming the document(s) to draw. Defaults to
+#'   \code{NULL}, which draws them all, following \code{scope}.
+#' @param scope Character; either \code{"document"} (a layout per document) or
+#'   \code{"shared"} (one layout for the pool). Drawing more than one document
+#'   promotes \code{"document"} to \code{"shared"} automatically. Defaults to
+#'   \code{"document"}.
+#' @param layout Character; either \code{"mds"} (non-metric MDS) or
+#'   \code{"pca"}. MDS
+#'   optimises the rank order of the distances, so it gives a more faithful
+#'   plane when the number of dimensions far exceeds the number of points.
+#'   There is little to gain from applying it to the handful of points in one
+#'   document, three points sitting exactly in two dimensions; pair it with
+#'   \code{scope = "shared"} when documents are to be compared. Defaults to
+#'   \code{"mds"}.
+#' @param zoom Logical; under \code{scope = "shared"}, whether to fit the
+#'   axis limits to the document being drawn rather than to the whole pool.
+#'   The basis stays shared, so positions keep their meaning, but the ranges
+#'   then differ between panels and positions can no longer be read across
+#'   them. Use it when a document that moves little collapses to a point.
+#'   Defaults to \code{FALSE}.
+#' @param axis An optional numeric vector with one element per embedding
+#'   dimension, such as the difference between the high and low anchor means.
+#'   The layout is rotated so that this direction lies as nearly as possible
+#'   along the x axis. Rotation changes neither distances nor angles, so
+#'   fidelity is unaffected and only the interpretation of the axes changes;
+#'   it also removes the arbitrary sign and orientation that otherwise differ
+#'   between providers. Defaults to \code{NULL} (no rotation).
+#' @param arrows Logical; whether to draw an arrowhead on every step. Defaults
+#'   to \code{TRUE}.
+#' @param label Logical; whether to print the segment number inside each point.
+#'   Defaults to \code{TRUE}.
+#' @param text Logical; whether to print the segment texts beside the
+#'   plot so that points can be matched to what was said. This is limited to
+#'   a single document and to \code{text_max} segments; outside those limits,
+#'   or without the \pkg{patchwork} package, the text is dropped with a
+#'   warning and the plot is returned on its own. Defaults to \code{FALSE}.
+#' @param text_wrap Integer; the wrapping width, in characters, for the printed
+#'   texts. Defaults to 34.
+#' @param text_max Integer; the largest number of segments for which the texts
+#'   are printed, beyond which the panel cannot hold them. Defaults to 8.
+#' @param title Character; the plot title. Defaults to \code{NULL}, which
+#'   prints \code{"Trajectory through semantic space"}.
+#' @param compact Logical; whether to draw small for placing plots side by
+#'   side, with smaller text and points, no legend, and a one-line subtitle.
+#'   Defaults to \code{FALSE}.
+#' @param null_reps Integer; the number of random draws behind the fidelity
+#'   null shown in the subtitle, where 0 skips it. Defaults to 200.
+#' @param fidelity Logical; whether to print the fidelity line as a subtitle.
+#'   When several shared-projection panels are laid out together the
+#'   same figures repeat on each, so set it \code{FALSE} and state them once
+#'   in the figure note. Defaults to \code{TRUE}.
+#' @return A \pkg{ggplot2} object (printed when called at the top level): one
+#'   point per segment numbered in narrative order, the last drawn as a square and
+#'   the rest as circles, an arrow for every step, faint axes through the
+#'   origin (which is the centroid of the segments), equal scaling with
+#'   matching breaks on both axes, and the fidelity subtitle unless
+#'   \code{fidelity = FALSE}. Several documents are faceted. With
+#'   \code{text = TRUE} a \pkg{patchwork} of the plot and the segment texts
+#'   is returned instead.
+#' @details
+#' A warning is raised when per-document planes preserve no more rank order
+#' than the same number of segments drawn at random from the pool, which is
+#' the usual case at survey lengths. Treat it as an instruction to read the
+#' order rather than the distances, and to move to \code{scope = "shared"},
+#' \code{\link{plot_recurrence}} or \code{\link{plot_arc}}.
+#' @seealso \code{\link{trajectory_fidelity}}, \code{\link{trajectory_stats}},
+#'   \code{\link{plot_recurrence}}. Which display to reach for first, and how
+#'   to read each: \url{https://github.com/PsycholoStudio/qualembed/blob/main/docs/reading-plots.md}.
 #' @export
 plot_trajectory <- function(emb, seg, doc = NULL,
                             scope = c("document", "shared"),
@@ -2042,13 +3119,31 @@ plot_trajectory <- function(emb, seg, doc = NULL,
   .vn <- 100 * stats::median(.f$var_null, na.rm = TRUE)
   .so <- stats::median(.f$shepard, na.rm = TRUE)
   .sn <- stats::median(.f$shepard_null, na.rm = TRUE)
-  sub <- paste(strwrap(sprintf(
-    "%s projection. PC1 + PC2 hold %.0f%% of the variance, against %.0f%% for %s, and distances on the page keep a rank correlation of %s with the distances actually measured, against %s for the same segments drawn at random. Because the vectors are unit length, that measured distance is sqrt(2(1 - s)) in the cosine similarity s every other analysis here uses: same order, compressed scale. The arrows show the order, which projection preserves exactly; their lengths are not the distances travelled.",
-    if (scope == "document") "Per-document" else "Shared", .vo, .vn,
-    if (scope == "document") "segments drawn at random" else "isotropic points",
-    .p2(.so), .p2(.sn)), width = 72), collapse = "\n")
-  sub_short <- sprintf("PC1 + PC2 = %d%% (null %d%%), rank corr. = %s (null %s)",
-                       round(.vo), round(.vn), .p2(.so), .p2(.sn))
+  # MDS には説明分散が無い（var_2d は NA）。PCA 用の書式をそのまま使うと
+  # 副題に "NA%" が出るので、順位相関だけを報告する形に切り替える。
+  .has_var <- is.finite(.vo) && is.finite(.vn)
+  # 1 文書だけを描くときは帰無を作る材料が無く、shepard_null も NA になる。
+  .has_null <- is.finite(.sn)
+  sub <- paste(strwrap(
+    if (.has_var) sprintf(
+      "%s projection. PC1 + PC2 hold %.0f%% of the variance, against %.0f%% for %s, and distances on the page keep a rank correlation of %s with the distances actually measured, against %s for the same segments drawn at random. Because the vectors are unit length, that measured distance is sqrt(2(1 - s)) in the cosine similarity s every other analysis here uses: same order, compressed scale. The arrows show the order, which projection preserves exactly; their lengths are not the distances travelled.",
+      if (scope == "document") "Per-document" else "Shared", .vo, .vn,
+      if (scope == "document") "segments drawn at random" else "isotropic points",
+      .p2(.so), .p2(.sn))
+    else if (.has_null) sprintf(
+      "%s projection. Distances on the page keep a rank correlation of %s with the full-dimensional ones, against %s for %s.",
+      if (scope == "document") "Per-document" else "Shared",
+      .p2(.so), .p2(.sn),
+      if (scope == "document") "segments drawn at random" else "isotropic points")
+    else sprintf(
+      "%s projection. Distances on the page keep a rank correlation of %s with the full-dimensional ones. Too few documents to build a null.",
+      if (scope == "document") "Per-document" else "Shared", .p2(.so)),
+    width = 72), collapse = "\n")
+  sub_short <- if (.has_var)
+    sprintf("PC1 + PC2 = %d%% (null %d%%), rank corr. = %s (null %s)",
+            round(.vo), round(.vn), .p2(.so), .p2(.sn))
+  else if (.has_null) sprintf("rank corr. = %s (null %s)", .p2(.so), .p2(.sn))
+  else sprintf("rank corr. = %s", .p2(.so))
 
   # 1段ごとに矢印を引く。geom_path の arrow は経路の最後にしか付かない。
   seg_df <- do.call(rbind, lapply(docs, function(dd) {
@@ -2196,12 +3291,19 @@ plot_trajectory <- function(emb, seg, doc = NULL,
   p
 }
 
-#' 2次元投影上のセグメント配置（非推奨。plot_trajectory() を使うこと）
+#' Plot segments on a two-dimensional projection (deprecated)
 #'
-#' plot_trajectory() に置き換えられた。新関数は矢印で順序を示し、射影が
-#' どれだけ距離を保っているかを副題に出す。
-#' @param emb,seg,line,label,title 旧引数
-#' @seealso [plot_trajectory()]
+#' @description
+#' Deprecated: use \code{\link{plot_trajectory}} instead. The replacement marks
+#' the narrative order with an arrow on every step and prints in the subtitle
+#' how much of the distance structure the projection preserves. This function
+#' is now a thin wrapper kept for backward compatibility.
+#' @param emb,seg,line,label,title Arguments of the old interface. They are
+#'   passed straight to \code{\link{plot_trajectory}}, where \code{line} becomes
+#'   \code{arrows}.
+#' @return The \pkg{ggplot2} object returned by
+#'   \code{\link{plot_trajectory}}.
+#' @seealso \code{\link{plot_trajectory}}
 #' @export
 plot_trajectory_2d <- function(emb, seg, line = TRUE, label = TRUE,
                                title = NULL) {
@@ -2211,17 +3313,27 @@ plot_trajectory_2d <- function(emb, seg, line = TRUE, label = TRUE,
 
 # ── 旧 API（非推奨・後方互換のためだけに残す）─────────────────
 
-#' 2次元投影上の軌跡長（非推奨）
+#' Measure path length in a two-dimensional projection (deprecated)
 #'
-#' **PC1・PC2 の平面上で距離を測る。すなわち埋め込み空間ではなく「図」を
-#' 測っている。** 2次元への射影は距離構造を保存しない (Chari & Pachter,
-#' 2023)。距離には trajectory_stats() を使うこと。
+#' @description
+#' Deprecated, and warns when called. \strong{It measures distance in the
+#' plane of PC1 and PC2, which is to say in the picture rather than in the
+#' embedding space}, and a two-dimensional projection does not preserve the
+#' distance structure (Chari and Pachter, 2023). Use
+#' \code{\link{trajectory_stats}}, which measures in all dimensions and reports
+#' a path length that can be interpreted.
 #'
-#' @param df        pca_2d()$df にperson列とtime列を追加したもの
-#' @param person_col 個人ID列名
-#' @param time_col   時点列名
-#' @return 個人ごとの2次元経路長（total_dist_2d）
-#' @seealso [trajectory_stats()]
+#' @param df A data frame: the \code{df} element of \code{\link{pca_2d}} with a
+#'   person column and a time column added. Columns \code{PC1} and
+#'   \code{PC2} are read from it.
+#' @param person_col Character; the name of the person-identifier column.
+#'   Defaults to \code{"person"}.
+#' @param time_col Character; the name of the time-point column, by which rows
+#'   are ordered within person. Defaults to \code{"time"}.
+#' @return A data frame with one row per person: the identifier column,
+#'   \code{n_timepoints}, and \code{total_dist_2d}, the summed Euclidean
+#'   distance between consecutive points on the plane.
+#' @seealso \code{\link{trajectory_stats}}
 #' @export
 trajectory_length <- function(df, person_col = "person", time_col = "time") {
   warning("trajectory_length() measures distance in the 2-D PCA projection, ",
@@ -2236,16 +3348,25 @@ trajectory_length <- function(df, person_col = "person", time_col = "time") {
               .groups = "drop")
 }
 
-#' 縦断軌跡の可視化（非推奨）
+#' Plot longitudinal trajectories from a projection (deprecated)
 #'
-#' plot_trajectory() に置き換えられた。新関数は埋め込み行列とセグメント表を
-#' 直接受け取り、1段ごとの矢印を描き、その射影が距離をどれだけ保っているかを
-#' 図に印字する。本関数は v0.2.0 との後方互換のためだけに残す。
+#' @description
+#' Deprecated, and warns when called. Superseded by
+#' \code{\link{plot_trajectory}}, which takes the embedding matrix and a
+#' segment table directly, draws an arrow for every step, and prints how well
+#' the projection preserves the measured distances. This function is kept only
+#' for backward compatibility with version 0.2.0.
 #'
-#' @param df        person・time・PC1・PC2・label を含むデータフレーム
-#' @param person_col 個人ID列名
-#' @param title     図のタイトル
-#' @seealso [plot_trajectory()]
+#' @param df A data frame with columns \code{person}, \code{time}, \code{PC1},
+#'   \code{PC2} and \code{label}, already in time order within person.
+#' @param person_col Character; the name of the person-identifier column.
+#'   Defaults to \code{"person"}.
+#' @param title Character; the plot title. Defaults to
+#'   \code{"Trajectories in semantic space"}.
+#' @return A \pkg{ggplot2} object (printed when called at the top level): one
+#'   path per person across the PC1-PC2 plane,
+#'   with an arrowhead at its end and repelled point labels.
+#' @seealso \code{\link{plot_trajectory}}
 #' @export
 plot_trajectories <- function(df, person_col = "person",
                               title = "Trajectories in semantic space") {

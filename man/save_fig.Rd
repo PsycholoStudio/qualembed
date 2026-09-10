@@ -2,21 +2,34 @@
 % Please edit documentation in R/stats-viz.R
 \name{save_fig}
 \alias{save_fig}
-\title{図を指定フォルダに保存（figuresフォルダを自動作成）}
+\title{Save a plot to a PNG file}
 \usage{
 save_fig(plot, name, dir = "figures", w = 11, h = 7.5, dpi = 180)
 }
 \arguments{
-\item{plot}{ggplotオブジェクト}
+\item{plot}{A \pkg{ggplot2} object.}
 
-\item{name}{ファイル名（拡張子なし）}
+\item{name}{Character; the file name without the extension, to which
+\code{.png} is appended.}
 
-\item{dir}{保存先ディレクトリ}
+\item{dir}{Character; the output directory, created recursively if missing.
+Defaults to \code{"figures"}.}
 
-\item{w, }{h   幅・高さ（インチ）}
+\item{w}{Numeric; the width in inches. Defaults to 11.}
 
-\item{dpi}{解像度}
+\item{h}{Numeric; the height in inches. Defaults to 7.5.}
+
+\item{dpi}{Numeric; the resolution in dots per inch. Defaults to 180.}
+}
+\value{
+The path written, invisibly.
 }
 \description{
-図を指定フォルダに保存（figuresフォルダを自動作成）
+Writes a \pkg{ggplot2} object to \code{dir/name.png} on a white background,
+creating the directory if it does not yet exist, and reports the path it
+wrote.
+}
+\seealso{
+\code{\link{plot_embedding_2d}} and the other plotting functions,
+  whose results this writes to disk.
 }

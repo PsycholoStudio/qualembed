@@ -2,19 +2,35 @@
 % Please edit documentation in R/stats-viz.R
 \name{mantel_test}
 \alias{mantel_test}
-\title{Mantel 検定（vegan::mantel のラッパー; Mantel, 1967）}
+\title{Test the agreement of two similarity structures by Mantel correlation}
 \usage{
 mantel_test(m1, m2, n_perm = 9999)
 }
 \arguments{
-\item{m1, }{m2  対応する n×n の距離（または類似度）行列。
-行・列の順序が2つの行列で一致していること。}
+\item{m1}{A square n by n distance or similarity matrix.}
 
-\item{n_perm}{並べ替え回数}
+\item{m2}{A second square matrix of the same size, describing the same
+items in the same row and column order. When both matrices carry row
+names, the names must be identical; reorder one of them if they are not,
+for example with \code{m2[rownames(m1), rownames(m1)]}.}
+
+\item{n_perm}{Integer; the number of permutations. Defaults to 9999.}
 }
 \value{
-list(r, p, n_perm)
+A list with \code{r} (the Mantel correlation, denoted r_M in the
+  paper), \code{p} (the permutation p value) and \code{n_perm}.
 }
 \description{
-Mantel 検定（vegan::mantel のラッパー; Mantel, 1967）
+Correlates the off-diagonal entries of two distance or similarity matrices
+defined over the same items, and tests that correlation by permuting the
+rows and columns of one matrix (Mantel, 1967). A wrapper around
+\code{\link[vegan]{mantel}} with Pearson correlation. This is the primary
+statistic for cross-space agreement in the accompanying paper, because it
+compares the structures directly and requires no choice of
+dimensionality.
+}
+\seealso{
+\code{\link{procrustes_m2}} for the supplementary, descriptive
+  comparison, and \code{\link{euclidean_dist}}, whose \code{dist} object
+  has to be passed through \code{as.matrix()} first.
 }

@@ -2,7 +2,7 @@
 % Please edit documentation in R/stats-viz.R
 \name{plot_arc}
 \alias{plot_arc}
-\title{意味の弧: セグメントごとの量を語りの位置に対して描く}
+\title{Plot a semantic arc across narrative position}
 \usage{
 plot_arc(
   emb,
@@ -18,38 +18,84 @@ plot_arc(
 )
 }
 \arguments{
-\item{emb}{セグメントの埋め込み行列}
+\item{emb}{A numeric matrix of segment embeddings, one row per segment;
+rows are matched to the table by \code{docname} where possible, otherwise
+by position.}
 
-\item{seg}{as_segments() の契約を満たす表}
+\item{seg}{A segment table satisfying the \code{\link{as_segments}}
+contract.}
 
-\item{y}{"projection"（high/low アンカーへの投影）、"step"（直前との
-コサイン距離＝Toubia らの speed を段ごとに解いたもの）、
-"forward_flow"（先行する全セグメントとの平均距離＝Gray et al., 2019）}
+\item{y}{Character; the quantity on the vertical axis.
+\code{"projection"} projects each segment onto the axis running from the
+low to the high anchors; \code{"step"} is the cosine distance from the
+previous segment, the speed of Toubia et al. (2021) resolved one step at
+a time; \code{"forward_flow"} is the mean distance from all preceding
+segments (Gray et al., 2019). The first segment is NA for the last two.
+Defaults to \code{"projection"}.}
 
-\item{high, low}{y = "projection" のときのアンカー埋め込み行列}
+\item{high, low}{Numeric matrices of anchor embeddings defining the two
+poles of the axis, required when \code{y = "projection"} and used as in
+\code{\link{semantic_projection}}. Embed the phrases that name each
+pole. Default to \code{NULL}.}
 
-\item{x}{"auto"（1文書なら position、複数なら relative）/ "position" /
-"relative"（(t-0.5)/T）}
+\item{x}{Character; the horizontal axis, either \code{"auto"} (segment
+position for a single document, relative position for several),
+\code{"position"}, or \code{"relative"}, which is (t - 0.5)/T and so puts
+documents of different lengths on a common scale. Defaults to
+\code{"auto"}.}
 
-\item{smooth}{loess の平滑線。"auto"（既定）は最短文書が10段以上の
-ときだけ引く——数点に loess を当てても形は読めない。}
+\item{smooth}{Logical, or the string \code{"auto"}; whether to add a loess
+curve. \code{"auto"} draws one only when the shortest document has at
+least ten segments, a loess through a handful of points having no
+readable shape. Defaults to \code{"auto"}.}
 
-\item{null_band}{段の順序を入れ替えた帰無分布（0 なら計算しない。999 が目安）。
-y = "step" / "forward_flow" では位置ごとの 2.5–97.5% 帯を描く。
-y = "projection" では**帯を描かない**——投影値は順序に依存しないので、
-並べ替えても値の集合は変わらず、位置ごとの帯は定義上まったいらになり、
-何も検定しない。代わりに位置と投影の順位相関に対する並べ替え p を
-副題に出す（弧に傾きがあるかを問う、意味のある帰無仮説である）。
-複数文書に帯を描くときは文書ごとに面を分ける（重ねると読めない）。}
+\item{null_band}{Integer; the number of random reorderings of the segments
+used to build a null, where 0 computes none and 999 is a
+reasonable value. For \code{y = "step"} and \code{y = "forward_flow"} a
+pointwise 2.5-97.5\% band is shaded. For \code{y = "projection"}
+\strong{no band is drawn}: projection scores do not depend on order, so
+reordering leaves the set of values untouched, and a pointwise band
+would be flat by construction and would test nothing. A permutation p
+for the rank correlation between position and projection is printed in
+the subtitle instead, which asks the question that is meaningful here,
+namely whether the arc has a slope. When bands are drawn for several
+documents the panels are faceted, being unreadable when overlaid.
+Defaults to 0.}
 
-\item{center}{"auto"（1文書は生値、複数は文書内平均中心化）/ "none" / "mean"}
+\item{center}{Character; how the values are centered, either \code{"auto"}
+(raw values for a single document, centered on the document's own mean
+when several are drawn), \code{"none"}, or \code{"mean"}. Defaults to
+\code{"auto"}.}
 
-\item{title}{図題}
+\item{title}{Character; the plot title. Defaults to \code{NULL}, which
+prints \code{"Semantic arc"}.}
 }
 \value{
-ggplot（表示もする）
+A \pkg{ggplot2} object (printed when called at the top level): one
+  line per document with each segment marked by a numbered open circle, the
+  optional loess curve, and either the shaded null band or the trend test
+  in the subtitle.
 }
 \description{
-縦軸はいずれも**全次元**で計算される。横軸はセグメントの位置しか
-担わないので、2次元投影の歪みを踏まない。
+Draws how one per-segment quantity moves from the start of a document to
+its end: a score on an anchor axis, the distance from the preceding
+segment, or the distance from everything said so far. Every vertical
+quantity is computed in \emph{all} dimensions and the horizontal axis
+carries nothing but segment position, so the display is free of the
+distortion a two-dimensional projection introduces. Together with
+\code{\link{plot_recurrence}} it is what to look at before any projected
+display.
+}
+\details{
+The shaded bands are pointwise and uncorrected, so they describe the
+document rather than test it. In particular they do not license a claim
+about any individual step: reordering makes each adjacent pair a random
+pair from that document's own pairwise distances, which floors the
+attainable p for a document of n segments at 2/(n^2 - n + 2), or .14 at
+four segments and .03 at eight. See \code{\link{trajectory_null}} for the
+tests that remain available at the document level.
+}
+\seealso{
+\code{\link{plot_recurrence}}, \code{\link{trajectory_null}},
+  \code{\link{trajectory_stats}}
 }

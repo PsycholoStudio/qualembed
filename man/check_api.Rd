@@ -2,15 +2,27 @@
 % Please edit documentation in R/embed.R
 \name{check_api}
 \alias{check_api}
-\title{Quick API connectivity check}
+\title{Check that an embedding API is reachable}
 \usage{
 check_api(provider = "gemini", ...)
 }
 \arguments{
-\item{provider}{One of \code{"gemini"}, \code{"voyage"}, \code{"openai"}.}
+\item{provider}{Character; one of \code{"gemini"}, \code{"voyage"},
+\code{"openai"}. Defaults to \code{"gemini"}.}
 
 \item{...}{Passed to \code{\link{embed}}.}
 }
+\value{
+The one-row embedding matrix returned by \code{\link{embed}},
+  invisibly, carrying the usual \code{provider}, \code{model} and
+  \code{access_date} attributes.
+}
 \description{
-Embeds a single test sentence and prints the model and dimensionality.
+Embeds a single test sentence and prints the provider, the model, the
+embedding dimensionality and the first five components, so that a key and an
+endpoint can be confirmed before a long run is started.
+}
+\seealso{
+\code{\link{embed}} for the call this wraps, and
+  \code{\link{embedding_info}} for the full provenance of a matrix.
 }

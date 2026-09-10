@@ -2,16 +2,54 @@
 % Please edit documentation in R/stats-viz.R
 \name{cos_sim_matrix}
 \alias{cos_sim_matrix}
-\title{コサイン類似度行列}
+\title{Compute the cosine similarity matrix of an embedding}
 \usage{
 cos_sim_matrix(mat)
 }
 \arguments{
-\item{mat}{embedding行列 (n × d)}
+\item{mat}{A numeric matrix with one row per text and one column per
+embedding dimension, as returned by \code{\link{embed}}. At least two
+rows are required, and no row may have zero or non-finite length.}
 }
 \value{
-n × n のコサイン類似度行列
+An n by n symmetric matrix of cosine similarities with ones on the
+  diagonal, where n is the number of rows of \code{mat}. Row and column
+  names are inherited from \code{rownames(mat)}, so the texts themselves
+  label the result.
 }
 \description{
-コサイン類似度行列
+Computes the cosine similarity between every pair of rows of an embedding
+matrix. Cosine ignores vector length and compares directions only, which is
+the quantity embedding APIs are trained to make meaningful; it is the
+default similarity used throughout this package.
+}
+\details{
+The values in this matrix will look uniformly large, and that is the normal
+case rather than a sign that the texts are alike: the vectors share a common
+component that puts a floor under every pair. A contrast between groups is
+therefore small in absolute terms even
+when it is strong; read it through \code{\link{within_between_sim}}, which
+standardises it, and \code{\link{test_delta}}, which tests it against a
+permutation null, rather than from the size of the difference itself.
+}
+\examples{
+# The floor is easiest to see on vectors that share a component, as
+# embeddings do. Two groups are present, but every cosine is high.
+set.seed(1)
+centres <- matrix(rnorm(2 * 64), 2, 64)
+m <- centres[rep(1:2, each = 6), ] +
+  matrix(rnorm(12 * 64, sd = 1.2), 12, 64) + 3
+rownames(m) <- paste0("item", 1:12)
+groups <- rep(c("a", "b"), each = 6)
+
+s <- cos_sim_matrix(m)
+range(s[upper.tri(s)])            # nothing is dissimilar
+within_between_sim(s, groups)     # delta is small, delta_std is not
+test_delta(s, groups, n_perm = 999)$p
+}
+\seealso{
+\code{\link{within_between_sim}} and \code{\link{test_delta}} to
+  compare groups, \code{\link{test_ari}} to test a partition,
+  \code{\link{centered_sim_matrix}} for the mean-centered variant
+  and \code{\link{euclidean_dist}} for a distance-based alternative.
 }

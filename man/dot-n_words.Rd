@@ -2,12 +2,21 @@
 % Please edit documentation in R/stats-viz.R
 \name{.n_words}
 \alias{.n_words}
-\title{語数の計数（ICU の語境界。空白を持たない言語でも動く）}
+\title{Count words using ICU word boundaries}
 \usage{
 .n_words(x)
 }
+\arguments{
+\item{x}{A character vector.}
+}
+\value{
+An integer vector of word counts, one per element of \code{x}.
+}
 \description{
-空白分割は日本語で段落全体を1語と数える。ICU の語境界解析は CJK に
-辞書ベースの分割を持つので、同じ呼び出しで英語と日本語の両方が通る。
+Counts words with the ICU boundary analysis exposed by \pkg{stringi}, so the
+count is defined for languages that do not delimit words with spaces.
+Splitting on whitespace would count an entire Japanese paragraph as one
+word; ICU applies dictionary-based segmentation to CJK text, so English and
+Japanese both work through the same call.
 }
 \keyword{internal}

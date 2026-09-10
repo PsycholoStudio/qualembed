@@ -4,7 +4,8 @@
 \alias{panas_ja_validated}
 \title{Validated Japanese PANAS item wordings (Kawahito et al., 2011)}
 \format{
-See the source for structure.
+A named character vector of the twenty Japanese terms, named
+  PA01-PA10 and NA01-NA10 to match \code{panas_items$en} one for one.
 }
 \usage{
 panas_ja_validated

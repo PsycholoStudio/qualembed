@@ -2,20 +2,35 @@
 % Please edit documentation in R/embed.R
 \name{cache_info}
 \alias{cache_info}
-\title{キャッシュの中身を一覧する}
+\title{Inspect the embedding cache}
 \usage{
 cache_info(cache_dir = file.path("output", "embed_cache"))
 }
 \arguments{
-\item{cache_dir}{Directory holding the cache files.}
+\item{cache_dir}{Character; the directory holding the cache files. Defaults
+to \code{file.path("output", "embed_cache")}, which is relative to the
+working directory, so a session started elsewhere will not find an
+existing cache.}
 }
 \value{
-provider / model / n_texts / dims / size_mb のデータフレーム
-Inspect the embedding cache
-
-A data frame of provider, model, number of cached texts,
-  dimensionality and file size.
+A data frame with one row per cache file and columns
+  \code{provider}, \code{model} (the model identifier, with any
+  vector-changing request options appended as they appear in the file name),
+  \code{n_texts}, \code{dims} (embedding dimensionality), \code{size_mb} and
+  \code{file}. The directory that was read is printed as a message and
+  attached as the attribute \code{cache_dir}, so that an empty result can
+  be told apart from a session looking in the wrong place. When the
+  directory holds no cache, an empty data frame is returned invisibly with
+  the same attribute.
 }
 \description{
-キャッシュの中身を一覧する
+Lists what the on-disk embedding cache currently holds, one row per cache
+file. A provider has more than one file when it was called with different
+vector-changing request options, since those are part of the file name. Use it to confirm that a run will be served from
+the cache rather than from the API, and to see how much disk the cache
+occupies.
+}
+\seealso{
+\code{\link{cache_clear}} to delete cache files, and
+  \code{\link{cache_path}} for the name of a single cache file.
 }

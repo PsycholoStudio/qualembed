@@ -2,7 +2,7 @@
 % Please edit documentation in R/stats-viz.R
 \name{trajectory_fidelity}
 \alias{trajectory_fidelity}
-\title{射影の忠実さを測る（矢印の図を信じてよいかの診断）}
+\title{Measure how faithfully a two-dimensional layout keeps the distances}
 \usage{
 trajectory_fidelity(
   emb,
@@ -13,40 +13,66 @@ trajectory_fidelity(
 )
 }
 \arguments{
-\item{emb}{セグメントの埋め込み行列}
+\item{emb}{A numeric matrix of segment embeddings, one row per segment;
+rows are matched to the table by \code{docname} where possible, otherwise
+by position.}
 
-\item{seg}{as_segments() の契約を満たす表}
+\item{seg}{A segment table satisfying the \code{\link{as_segments}}
+contract.}
 
-\item{scope}{"document"（文書ごとに配置）/ "shared"（全体で一つの配置）}
+\item{scope}{Character; how the layout is solved. \code{"document"} solves a
+separate layout for each document; \code{"shared"} solves one layout for
+the whole pool and reads each document's rows out of it, which is what
+makes panels comparable with one another. Defaults to \code{"document"}.}
 
-\item{layout}{"mds"（既定・非計量MDS）/ "pca"。MDS は距離の順位を目的関数に
-するので、次元数が点数を大きく超える埋め込みでは PCA より平面が忠実に
-なる。var_2d は PCA でしか定義されない（MDS には分散説明率がない）ので、
-MDS では NA が入る。忠実さは layout によらず shepard で読む。}
+\item{layout}{Character; either \code{"mds"} (non-metric MDS) or
+\code{"pca"}. MDS
+optimises the rank order of the distances, so it gives a more faithful
+plane than PCA when the number of dimensions far exceeds the number of
+points. \code{var_2d} is defined only for PCA, MDS having no variance
+explained, and is NA under MDS; fidelity is read from \code{shepard}
+under either. Defaults to \code{"mds"}.}
 
-\item{null_reps}{帰無の反復数。0 で帰無を計算しない（既定 200）}
+\item{null_reps}{Integer; the number of null draws, where 0 skips the
+null and returns NA in its columns. Defaults to 200.}
 }
 \value{
-文書ごとの data.frame(doc_id, n_seg, layout, var_2d, var_null,
-  shepard, shepard_null)
+A data frame with one row per document of at least three segments
+  and columns \code{doc_id}, \code{n_seg}, \code{layout}, \code{var_2d}
+  (proportion of variance in the first two components, PCA only),
+  \code{var_null}, \code{shepard} (Spearman correlation between measured
+  and plotted distances) and \code{shepard_null}. Under
+  \code{scope = "shared"} with \code{layout = "pca"}, \code{var_null} is
+  the isotropic expectation 2/(N - 1) rather than a resampled value,
+  because the shared plane is fixed by the whole cloud and does not move
+  when segments are redrawn.
 }
 \description{
-2次元への射影は距離を歪める。どれだけ歪むかは場合による——測れば済む。
-全次元でのペア距離と、平面上でのペア距離の順位相関（Shepard 相関）を
-文書ごとに返す。
-}
-\details{
-**生の値だけを見てはいけない。** 分散説明率も Shepard 相関も、
-セグメント数 n が小さいほど機械的に高くなる。中心化後のランクは
-n-1 なので、n=3 なら平面は常に厳密（分散 100%、相関 1.00）、
-n=4 でも等方な点で 2/(n-1) = 67% が出る。そこで同じ n を全文書の
-プールから無作為抽出した帰無を併せて返す。読むべきは観測と帰無の差で
-あって、観測の絶対値ではない。
+Diagnostic for whether an arrow plot can be believed. Projecting to two
+dimensions distorts distances, and how much it distorts them in any given
+case is an empirical question, so this measures it. For each document it
+returns the rank correlation between the pairwise distances computed in
+all dimensions and the pairwise distances on the page (a Shepard
+correlation), together with the variance the plane holds.
 
-実測（デモ15、40名の逐語、中央値4セグメント）では、文書ごとの射影は
-分散 .70／相関 .92 を示すが、帰無は .74／.86 で、観測が帰無を上回った
-文書は 35 中 16 と偶然の範囲だった。他人のセグメントを寄せ集めても
-同じ数字が出る。一方、共通射影は分散 .14 に対し等方期待 .01 で、
-実質的な構造はこちらにある。**比較したい文書が複数あるなら
-scope = "shared" を使うこと。**
+\strong{Never read the observed values on their own.} Both the variance
+explained and the Shepard correlation rise mechanically as the number of
+segments n gets smaller: centered points have rank n - 1, so at n = 3 the
+plane is always exact (100\% of variance, correlation 1.00), and even at
+n = 4 isotropic points return 2/(n - 1) = 67\%. The function therefore
+also returns a null built by drawing the same number of segments at random
+from the pool of all documents. What to read is the gap between observed
+and null, not the size of the observed value.
+
+A per-document layout of a handful of segments will therefore look
+excellent on both measures while a random pile of other people's segments
+looks just as good, which is what the null exposes. A shared layout over
+many documents has far more points than dimensions, so its variance and
+correlation are low in absolute terms yet stand well clear of the
+isotropic expectation. \strong{Use \code{scope = "shared"} whenever
+several documents are to be compared.}
+}
+\seealso{
+\code{\link{plot_trajectory}}, \code{\link{plot_recurrence}},
+  \code{\link{plot_arc}}
 }

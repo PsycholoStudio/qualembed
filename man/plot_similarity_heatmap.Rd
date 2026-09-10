@@ -2,7 +2,7 @@
 % Please edit documentation in R/stats-viz.R
 \name{plot_similarity_heatmap}
 \alias{plot_similarity_heatmap}
-\title{類似度行列のヒートマップ}
+\title{Plot a similarity matrix as a heatmap}
 \usage{
 plot_similarity_heatmap(
   sim_mat,
@@ -12,14 +12,40 @@ plot_similarity_heatmap(
 )
 }
 \arguments{
-\item{sim_mat}{類似度行列（行名・列名が必要）}
+\item{sim_mat}{A square similarity matrix, typically the output of
+\code{\link{cos_sim_matrix}}, with matching row and column names; the
+names are used to label the axes.}
 
-\item{order}{表示順（既定は行名の順のまま）}
+\item{order}{A character vector of row and column names giving the display
+order. May be a subset, in which case only those rows and columns are
+drawn. Defaults to \code{rownames(sim_mat)}, that is, the order already in
+the matrix.}
 
-\item{title}{図のタイトル}
+\item{title}{Character; the plot title. Defaults to
+\code{"Cosine similarity"}.}
 
-\item{legend_name}{凡例のタイトル}
+\item{legend_name}{Character; the title of the colour legend. Defaults to
+\code{"Cosine\\nsimilarity"}.}
+}
+\value{
+A \pkg{ggplot2} object (printed when called at the top level): one
+  tile per pair on a blue-white-red diverging scale centered at the mean of
+  the off-diagonal similarities, with the row and column names on both axes
+  in the order given by \code{order}.
 }
 \description{
-類似度行列のヒートマップ
+Renders a square similarity matrix, typically from
+\code{\link{cos_sim_matrix}}, as a tiled heatmap. Reordering the rows and
+columns by theoretical grouping is what makes block structure visible, so
+\code{order} is usually worth supplying.
+}
+\details{
+The diverging colour scale is centered on the mean of the off-diagonal
+similarities rather than on zero. Embedding cosines are usually positive and
+occupy a narrow band, so a zero-centered scale would render every cell the
+same colour.
+}
+\seealso{
+\code{\link{cos_sim_matrix}} for the matrix this displays, and
+  \code{\link{save_fig}} to write the result to a file.
 }

@@ -7,8 +7,8 @@ and no model training.
 for each piece of text. Texts that mean similar things land near each other, so
 occupation names, open-ended answers, or scale items become something you can
 correlate, cluster, and test. The package wraps three providers behind one function
-and adds the statistics used in the companion paper, *Embedding qualitative data in
-LLM semantic space: An intellectual lineage, R tutorial, and empirical calibration*.
+and adds a set of calibration statistics. It accompanies *Embedding qualitative data in
+LLM semantic space: A tutorial on conceptualization, measurement, and validation*.
 
 Nothing is generated and no respondents are simulated. Your participants' own words
 stay the data; the model is a measuring instrument. Every matrix it returns records
@@ -31,6 +31,11 @@ archived result can be traced back to its text, and rechecked, months later.
 [11 Troubleshooting](#11-when-something-goes-wrong) ·
 [12 Participant data](#12-before-you-send-participant-data)
 
+Longer notes live in `docs/`:
+[recording provenance](docs/provenance.md) ·
+[cutting long documents by hand](docs/segmentation.md) ·
+[reading a trajectory plot](docs/reading-plots.md)
+
 ---
 
 ## 1. Install
@@ -43,14 +48,17 @@ remotes::install_github("PsycholoStudio/qualembed")
 library(qualembed)
 ```
 
-The only hard dependency is `httr2`, which handles the web requests. Plotting uses
-`ggplot2` and `ggrepel`; Mantel tests use `vegan`. `remotes` installs these for you.
+The request layer depends on `httr2` for the web requests and `stringi` for the ICU
+boundary analysis that cuts text into units. Plotting uses `ggplot2` and `ggrepel`;
+Mantel tests use `vegan`; tables use `dplyr`. `remotes` installs these for you.
+Two things it does not install: `psych`, which the Big Five example in section 8
+needs, and `MASS`, without which the non-metric MDS of section 8 falls back to PCA.
 
 ## 2. Get an API key
 
 An API key is a password that identifies you to the provider. You need exactly one of
-the three below. All three have an allowance that is more than enough to work through
-this README and most small studies.
+the three below. Gemini and Voyage have a free allowance that is more than enough to
+work through this README and most small studies.
 
 **Gemini (Google)** — easiest to start with, most generous free tier.
 Go to <https://aistudio.google.com/apikey>, sign in, click **Create API key**, copy
@@ -147,11 +155,11 @@ than `physician`–`carpenter`? That comparison is meaningful.
 A quick map:
 
 ```r
-plot_embedding_2d(pca_2d(emb), labels = rownames(emb))
+plot_embedding_2d(coords_2d(emb), labels = rownames(emb))
 ```
 
-Treat the map as a sketch. Two dimensions cannot hold what 3,072 encode, and the
-paper explains why distances on such a plot should not be measured.
+Treat the map as a sketch. Two dimensions cannot hold what 3,072 encode, so read
+it by which points are nearer than which, never by how far apart they look.
 
 ## 6. Using your own survey data
 
@@ -163,12 +171,25 @@ or has accented characters, or curly quotes from Word. In Excel: File → Save A
 the numbers will look fine while meaning nothing.
 
 ```r
-d <- read.csv("responses.csv", fileEncoding = "UTF-8")
-str(d)                                                 # is the column there?
+d <- read.csv("responses.csv", encoding = "UTF-8")
+str(d)                                             # is the column there?
 
-d <- d[!is.na(d$answer) & trimws(d$answer) != "", ]    # drop blanks first
-emb <- embed(d$answer)
+txt <- d$answer                                    # take the column first
+txt <- txt[!is.na(txt) & trimws(txt) != ""]        # then drop the blanks
+emb <- embed(txt)
 ```
+
+Take the column before filtering, not after. Base `read.csv()` gives you a data
+frame whose `[` drops a single-column result to a plain vector, so filtering the
+frame first breaks on a one-column file; taking the column first behaves the same
+whatever you read with.
+
+And you can read with whatever you like — `embed()` needs only a character vector.
+`readr::read_csv()` and `data.table::fread()` take no encoding argument: they read
+as UTF-8, drop the byte-order mark Excel writes, and keep non-ASCII column names,
+all of which base `read.csv()` needs help with outside a UTF-8 locale. What none of
+them can do is rescue a file saved in the wrong encoding, which is why the
+instruction above is about saving rather than reading.
 
 `embed()` stops with a clear message if you pass a data frame instead of a column, or
 if any entry is blank — before spending any of your allowance.
@@ -188,8 +209,7 @@ cor(score, d$life_satisfaction_scale)   # does it track a measure you trust?
 
 That last line is the point. A projection score means something only if it corresponds
 to something outside the text. Use several phrases per pole rather than one, and
-report how much the result moves when you vary them — the paper does this throughout,
-and the answers move more than you would like.
+report how much the result moves when you vary them.
 
 ## 7. What it costs, and how the cache saves you money
 
@@ -209,7 +229,8 @@ Before a large job, ask what it will actually cost:
 
 ```r
 embed(texts, dry_run = TRUE)
-#> dry run: 1200 texts -> 950 cached, 250 would be fetched
+#> embed[gemini/gemini-embedding-001] dry run: 1200 texts -> 950 cached,
+#>   250 would be fetched (Gemini free tier allows ~1,000 per day)
 ```
 
 Other controls:
@@ -228,79 +249,39 @@ directory.
 
 ### What the matrix remembers about itself
 
-Every matrix `embed()` returns carries four attributes. Three are provenance;
-the fourth is the one that keeps your archive usable.
+Every matrix `embed()` returns carries its own provenance as attributes: the
+provider, model, dimensionality and access date, how many texts came from the
+API and how many from the cache, the request options and batch sizes, and the
+software that fetched them. One of them, `texts`, is what keeps your archive
+usable.
 
 ```r
 emb <- embed(setNames(d$answer, d$participant_id))
 
-rownames(emb)[1]         #> "P01"                    -- the label you asked for
-attr(emb, "texts")[1]    #> "I felt calm all week."  -- what was actually sent
-attr(emb, "provider")    #> "gemini"
-attr(emb, "model")       #> "gemini-embedding-001"
-attr(emb, "access_date") #> "2026-08-02"
+rownames(emb)[1]            #> "P01"                    -- the label you asked for
+attr(emb, "texts")[1]       #> "I felt calm all week."  -- what was actually sent
+attr(emb, "provider")       #> "gemini"
+attr(emb, "model")          #> "gemini-embedding-001"
+attr(emb, "access_date")    #> "2026-08-02"  -- when the matrix was assembled
+attr(emb, "fetch_dates")[1] #> "2026-07-30"  -- when that text was fetched
 ```
 
 The distinction matters more than it looks. Naming your rows by participant is
 the normal thing to do, and the moment you do it the matrix stops recording
 *what was embedded*. Save it, come back in six months, and the vectors are
 anonymous numbers: you cannot rebuild the cache from them, you cannot check that
-row 12 is the text you think it is, and neither can a reviewer. The `texts`
+row 12 is the text you think it is, and neither can a reviewer. Subsetting drops
+the attribute too — `emb[1:10, ]` returns a matrix with no `texts` — so subset
+the segment table and re-embed rather than slicing the matrix. The `texts`
 attribute keeps that link whatever the row names say.
 
 ### What to write in your method section
 
-`embedding_info()` prints exactly the fields a method section needs, from the
-matrix or from an archived file, so the record is read off the data rather than
-reconstructed from memory:
-
-```r
-embedding_info(emb)
-#> Provider        : gemini
-#> Model           : gemini-embedding-001
-#> Dimensions      : 3072
-#> Texts           : 240
-#> Request options : dims = unset, task_type = unset
-#> Fetched         : 2026-07-14 to 2026-08-05
-#> Assembled       : 2026-08-05 (12 fetched, 228 from cache)
-#> Request batches : 3 requests (n=96;h=4c11ab x96, n=96;h=8e0d72 x96, ...)
-#> Software        : qualembed 0.4.1; R version 4.5.0 (2025-04-11)
-
-embedding_info(readRDS("output/embeddings/study1_gemini.rds"))  # archives too
-```
-
-It returns the same fields as a one-row data frame, invisibly, so they can be
-written straight into a results file.
-
-Three of those lines are easy to get wrong by hand. *Request options* lists the
-settings that change the returned vector **including the ones you left unset**,
-because defaults differ between clients and change without notice, so "I did not
-set it" is part of the specification and cannot be recovered later. *Fetched* is
-when the vectors were actually retrieved from the API, which is not the same as
-when you built the matrix: a fully cached run touches no endpoint at all. Dates
-are recorded per text in the cache from v0.4.0 on; anything cached before that
-reports as undated rather than guessing. *Request batches* names which texts
-travelled together in one call. The vector a provider returns for a text depends
-on what accompanied it in the same request: the same word, same model, same
-options, sent alone with nineteen others and then with seventy-six, came back at
-a cosine of .9998 to .9999. That is small, and it is enough to move a
-cross-language congruence by .01. No provider documents the composition of a
-request as a setting, so nothing else records it; `embed()` fingerprints each
-request by its size and a hash of its contents, which lets you check whether a
-later run sent the same set. Batches are recorded from v0.4.1 on.
-
-Commercial embedding models are versioned products that get retired on the
-provider's schedule. A matrix that records only its numbers cannot be matched to
-the instrument that produced it once that instrument is gone.
-
-Two consequences worth knowing:
-
-- **Subsetting drops it.** `emb[1:10, ]` returns a matrix with no `texts` — that
-  is how R attributes work, not a bug. Embed once and subset for analysis, or
-  re-attach with `attr(sub, "texts") <- attr(emb, "texts")[1:10]`.
-- **`save_embeddings()` warns** when you archive a matrix that has lost it, and
-  again if two matrices in one archive share a name (name-based lookup would
-  return only the first).
+`embedding_info()` prints the fields a method section needs, read off the
+matrix rather than remembered: provider, model, dimensionality, request
+options, when the vectors were fetched and by what software. It works on an
+archived file too. [docs/provenance.md](docs/provenance.md) shows the output
+and what each field settles.
 
 ### Reproducing an analysis without an API key
 
@@ -310,18 +291,22 @@ Because the archives record their own texts, a cache can be rebuilt from them:
 source("seed_cache_from_archive.R")   # archives -> cache
 ```
 
-Then every downstream analysis runs from disk with no requests at all. This is
-how the companion paper is reproducible: a reader with the archived matrices can
-recompute every number without a key, without quota, and without the texts
-having drifted. The paper's own repository includes
-`verify_archive_recoverable.R`, which checks that every archived matrix can
-still be traced back to its texts — worth borrowing if you archive your own.
+Then every downstream analysis runs from disk with no requests at all. That
+script is not part of this package: it ships with the paper's own repository,
+along with `verify_archive_recoverable.R`, which checks that every archived
+matrix can still be traced back to its texts. Both are worth borrowing if you
+archive your own.
 
 ## 8. The statistics
 
-These are the calibration tests from the paper. Each takes embeddings and a structure
-you specified **before** looking at the result, and tests it against a permutation
-null.
+`embed()` is the part of this package you need. It returns an ordinary numeric
+matrix, so whatever you would do with a matrix of coordinates, you can do with
+it — your own clustering, your own regression, your own plots. Nothing below is
+required.
+
+What is below are worked examples of that kind of analysis. Each takes
+embeddings and a structure you specified **before** looking at the result, and
+tests it against a permutation null.
 
 ```r
 items <- get_bfi_items()          # 25 Big Five item texts, with factor labels
@@ -332,10 +317,12 @@ d <- test_delta(cos_sim_matrix(emb), items$factor)
 d$delta_std   # divided by SD(between); the raw delta is not comparable across models
 
 # Does clustering recover the five factors?
-test_ari(emb, items$factor, k = 5)
+a <- test_ari(emb, items$factor, k = 5)
+a[c("ari", "p")]
 
 # Do two spaces agree about the relations among the same items?
-mantel_test(cos_sim_matrix(emb_a), cos_sim_matrix(emb_b))
+emb_ja <- embed(items$ja)
+mantel_test(cos_sim_matrix(emb), cos_sim_matrix(emb_ja))
 ```
 
 | Function | Question it answers |
@@ -350,55 +337,33 @@ mantel_test(cos_sim_matrix(emb_a), cos_sim_matrix(emb_b))
 | `save_embeddings()`, `write_stats()`, `save_fig()` | Archive results reproducibly |
 | `progress_ticker()` | Show progress and ETA in long permutation loops |
 
-All tests use 9,999 permutations by default; pass `n_perm =` to change it.
+The permutation tests use 9,999 draws by default; pass `n_perm =` to change
+it. `procrustes_sensitivity()` is the exception: it sweeps k and does not
+permute.
 
 **Two dimensions, and which two.** `coords_2d()` defaults to non-metric
-multidimensional scaling rather than to PCA, and the reason is worth a paragraph
-because it decides what your figures are worth.
+multidimensional scaling rather than to PCA. What a reader takes off a scatter
+plot is the *ranking* of the distances on it, and that is what non-metric MDS
+fits. PCA maximises variance instead, and an embedding holds far fewer texts
+than the space has dimensions, so the first two components have little variance
+to maximise. `procrustes_m2()` is the exception and uses PCA, because Procrustes
+is a metric criterion and non-metric coordinates carry no common scale.
+`?coords_2d` gives the argument in full; `layout =` overrides either default.
 
-An embedding puts far fewer texts into the space than the space has dimensions,
-so the variance spreads thinly over many directions and the first two components
-hold little of it — 18% for the 169 narrative segments in the paper. PCA is
-maximising that 18%; it is not trying to keep the *ranking* of the distances,
-which is the one thing a reader takes off a scatter plot. Measured on six
-materials under three providers, the rank correlation between plotted and
-measured distances rose in all eighteen cells when the layout changed to
-non-metric MDS — for those segments, from .16–.54 to .76–.84. Under two of the
-three providers the PCA plane preserved no more of the ordering than random
-points would.
-
-The choice is *not* PCA versus MDS. For Euclidean distances, classical (metric)
-MDS and PCA are the same configuration — identical to numerical precision. The
-choice is metric versus non-metric, and the rule is to match the reduction to
-what the next step reads:
-
-- A **display** is read by the ranking of distances, so use non-metric MDS.
-  That is what `coords_2d()` and `plot_trajectory()` now do.
-- **Procrustes m²** is a metric criterion: squared distances after a similarity
-  transform, which allows one uniform scale factor and no more. Non-metric MDS
-  fits each of the two spaces its own monotone transformation, so their
-  coordinates land on scales that no single factor reconciles. Use the metric
-  reduction — which is PCA. That is what `procrustes_m2()` does, and passing
-  `layout = "mds"` overrides it if you want to see the difference (on our data
-  it is .02 to .06 of m², with the ordering across providers unchanged).
-
-**Rotation is a separate question, and it is about meaning, not accuracy.**
-Rotating a set of points in the plane changes no distance and no angle between
-them, so it cannot make a display more faithful — factor analysis rotates
-because *loadings* are what gets interpreted there, and a scatter of points has
-no loadings. What rotation can do is put an interpretable direction on an axis.
-Pass `axis =` a direction you specified in advance (the difference between your
-high and low anchor centroids, say) and the configuration turns so that
-direction lies along the horizontal. Fidelity is untouched; the axis acquires a
-name. On the paper's narrative segments this also fixed a sign that had come out
-reversed under one provider, so panels from different providers became
-comparable.
+**Rotation changes meaning, not accuracy.** Rotating a set of points in the
+plane changes no distance and no angle between them, so it cannot make a display
+more faithful — factor analysis rotates because *loadings* are what gets
+interpreted there, and a scatter of points has no loadings. What rotation can do
+is put an interpretable direction on an axis. Pass `axis =` a direction you
+specified in advance — the difference between your high and low anchor
+centroids, say — and the configuration turns so that direction lies along the
+horizontal. It also makes panels comparable when the direction comes out
+reversed in one of them.
 
 **One thing the package will not do for you.** Do not ask the embeddings how many
 dimensions your construct has. Eigenvalue rules and network methods applied to an
-embedding similarity matrix return artifacts of the space rather than properties of
-the construct — the paper demonstrates this at length. Fix the structure from theory,
-then test it.
+embedding similarity matrix return artifacts of the space rather than properties
+of the construct. Fix the structure from theory, then test it.
 
 Built-in materials for trying things out: `get_bfi_items()`, `panas_items`,
 `schwartz_items`, `valence_anchors`, `prestige_anchors`.
@@ -442,6 +407,8 @@ seg <- as_segments(list(P01 = c("first turn", "second turn"),
                         P02 = c("...")))
 
 # (c) the convenience splitter, if you want one
+#     `?segment_text` for choosing the unit, and for why "words" is not
+#     the same window in English and Japanese
 seg <- segment_text(transcripts, by = "words", size = 80, overlap = 20,
                     ids = participant_ids)
 
@@ -460,104 +427,12 @@ here would be a silently wrong analysis.
 
 ### Cutting by hand
 
-Syntactical units — words, sentences, paragraphs — are the only kind a program
-can find. Krippendorff's other four (physical, categorial, propositional,
-thematic) are defined by what the text *means*, and there is no automating them.
-Most qualitative work needs those, so the normal path into this package is a
-spreadsheet, not `segment_text()`.
-
-There is also no established criterion for how large a unit should be. Graneheim
-and Lundman put the tradeoff well: too broad and one unit carries several
-meanings, too narrow and the account fragments. Bengtsson is blunter — there are
-no rules. Since the package cannot choose for you, **write your rule down before
-you start**, and report it. Segmentation changes every number downstream; leaving
-it unreported is like not reporting how you cleaned your data.
-
-**Minimal procedure.**
-
-1. Write the unit rule in one sentence, and name the kind of unit
-   (syntactical / propositional / thematic) if you can.
-2. One transcript per file, UTF-8.
-3. Optionally rough-cut with `segment_text()`, then export **with a BOM** so the
-   file opens cleanly in Excel: `readr::write_excel_csv()`. `write.csv()` does
-   not write one.
-4. Edit in the spreadsheet, one row per segment. To split, insert a row. To
-   merge, mark a `merge_up` column rather than deleting a row — a deleted row
-   leaves no trace of itself.
-5. Read back with `fileEncoding = "UTF-8-BOM"` (also correct for files without a
-   BOM), apply the merges, and let `as_segments(df, renumber = TRUE)` renumber.
-6. Check segment counts and the `n_char` range before you spend any API calls.
-
-```r
-# rough cut -> spreadsheet
-seg <- segment_text(transcripts, ids = pid)
-seg$merge_up <- ""
-readr::write_excel_csv(seg[, c("doc_id", "segid", "text", "merge_up")],
-                       "to_edit.csv")
-
-# ... edit by hand ...
-
-# back into R
-back <- read.csv("to_edit.csv", fileEncoding = "UTF-8-BOM",
-                 colClasses = "character")
-back$grp <- ave(back$merge_up, back$doc_id,
-                FUN = function(m) cumsum(m != "x"))
-fused <- aggregate(text ~ doc_id + grp, data = back, FUN = paste, collapse = "")
-fused <- fused[order(fused$doc_id, as.integer(fused$grp)), ]
-seg <- as_segments(fused[, c("doc_id", "text")], renumber = TRUE)
-```
-
-**Japanese and English are handled by the same call.** Sentence splitting and
-word counting use ICU boundary analysis (via `stringi`), so `。！？` and `.!?`
-both work and Japanese word counts are morpheme-based rather than
-whitespace-based. Two things to know anyway. A short abbreviation list protects
-`Dr.`, `e.g.` and friends from being read as sentence ends; extend it with
-`abbrev = c(qe_abbreviations(), "Univ")` or switch it off with
-`abbrev = character(0)`. And an ICU "word" in Japanese is a morpheme, so the
-same content yields roughly 1.4× as many words as its English translation —
-`size = 50` is not the same window in the two languages. **If you are comparing
-English and Japanese, cut by sentence**, the one unit that matched across a
-translation pair in our checks. If you are cutting because of a token limit, use
-`by = "chars"`, the one unit whose size means the same thing in both.
-
-**Japanese CSV, four ways to lose data.**
-
-- UTF-8 without a BOM opens as mojibake in Japanese Excel. Save as "CSV UTF-8",
-  or write with `readr::write_excel_csv()`.
-- A Shift_JIS/CP932 file read as UTF-8 does not merely garble — the affected
-  rows vanish, and in a mixed English/Japanese file the loss is *partial* and
-  quiet. `read_segments()` stops when it sees this, but if a segment count falls
-  anywhere else, suspect the encoding first.
-- Saving as Shift_JIS silently drops ①–⑳, ～, —, and emoji.
-- Excel truncates a cell at 32,767 characters (Google Sheets at 50,000) — that
-  is characters, not bytes. A long uncut narrative can exceed it.
-
-Also: keep `doc_id` alphabetic (`P01`, not `01`) or Excel eats the leading zero,
-and de-duplicate CAQDAS exports — Taguette repeats a highlight once per tag, so
-a multi-tagged segment would otherwise be embedded several times.
-
-### Reporting agreement on the cutting
-
-If two people segmented, say so and give a number.
-
-`quallmer::qlm_compare()` (v0.4.0, 2026) computes Krippendorff's alpha for
-unitizing in R — the four variants of Krippendorff et al. (2016). It needs no
-LLM and no API key. `irr`, `icr`, `krippendorffsalpha` and `DescTools` do **not**
-do unitizing; they assume the units are already given. Mathet's gamma exists only
-in Python (`pygamma-agreement`), and Krippendorff's own u-Alpha is a standalone
-Java tool.
-
-**One trap.** `alpha_u_binary` measures agreement on which spans are material
-versus gap. If your segments exhaust the transcript — no gaps, which is the
-normal case here, and automatic in Japanese where nothing separates sentences —
-it is undefined and returns `NA`, *even for two identical segmentations*. It is
-also blind to boundaries between adjacent segments. For exhaustive segmentation
-report either the nominal variants (which need a code column, and where
-`alpha_cu_nominal` separates coding disagreement from boundary disagreement) or
-a plain boundary-set statistic of your own.
-
-The practical minimum, if you do nothing else: state the rule, state how many
-people applied it, and state how disagreements were resolved.
+`as_segments()` takes any table with one row per segment, so you can cut in a
+spreadsheet or a CAQDAS tool and bring the result back. Use
+`read_segments()` to read it: it strips the byte-order mark that Excel writes,
+checks the encoding, and stops rather than losing rows silently.
+[docs/segmentation.md](docs/segmentation.md) has the procedure, the four ways
+a Japanese CSV goes wrong, and how to report agreement on the cutting.
 
 ### Reading what is already on your disk
 
@@ -584,70 +459,19 @@ transcription, use that instead.
 
 ### Looking at a trajectory
 
-```r
-plot_recurrence(emb, seg, doc = "P07")                       # start here
-plot_arc(emb, seg, y = "forward_flow", null_band = 999)      # and here
-plot_arc(emb, seg, y = "projection", high = H, low = L)      # on your own axis
-plot_trajectory(emb, seg, doc = "P07")                       # the map, read with care
-
-trajectory_stats(emb, seg)          # path length, step, straightness (full space)
-trajectory_null(emb, seg, 999)      # is the order doing anything?
-trajectory_fidelity(emb, seg)       # can the map be trusted?
-recurrence_stats(emb, seg)          # RR, DET, LAM at a fixed recurrence rate
-```
-
-**The order of that list is the recommendation.** The first two displays are
-projection-free: every quantity they show is computed in the full space, and the
-axes carry nothing but position. The map comes last because it is the only one of
-the three whose geometry you must qualify while reading it, and a display you have
-to caveat is a poor first look at your data.
-
-`plot_recurrence()` is a segment × segment cosine matrix for one document. Every
-cell is computed in the **full** space and both axes are just position, so nothing
-is projected at all. Near-diagonal blocks are topic episodes; an off-diagonal block
-is the speaker returning to an earlier theme; a bright vertical stripe is one early
-passage the rest of the interview keeps referring back to. Read it against
-`trajectory_null()`: on our own material the topic *shifts* it displays survive a
-permutation of segment order and the *returns* do not, which is the kind of thing
-you want to know before you write either into a paper.
-
-`plot_arc()` draws one full-space quantity per segment against narrative position:
-a projection onto an axis you defined, the distance from the previous segment, or
-the mean distance from everything said so far. `null_band` shuffles the segment
-order and shades where a bag of the same segments would have fallen.
-
-`plot_trajectory()` is the picture most people picture: each segment placed by the
-first two principal components, joined in the order it was spoken, with arrows.
-**The order is exact — projection cannot distort which segment follows which — so
-"the account went out and came back" is a reading you may take from the arrows.
-Distance is not exact, so "this person travelled further" is not.** That is a
-full-space quantity and `trajectory_stats()` measures it. The subtitle prints how
-much variance the two components hold and how well the on-page distances
-rank-correlate with the measured ones — and beside each, the null. Read the
-difference, not the raw number: a plane fitted to one short document holds 69% of
-the variance with a rank correlation of .89, and the same count of segments drawn
-at random from the pool holds 74% and .87. Pass `scope = "shared"` when you want
-panels that can be compared with one another; the basis and the axis limits then
-come from the whole pool rather than from each document's handful of points.
-
-**Three cautions the package enforces rather than merely documents.**
-
-- Raw **path length is not a measure of how far the account travelled**. In our
-  own data it correlates .93–.96 with the number of segments and only .55–.64 with
-  word count — it mostly counts how many times you cut. Use `step_mean`,
-  `straightness`, or the arc; report `path_length` only beside the segment count.
-- **A distance measured on a two-dimensional picture is a property of the
-  picture.** `trajectory_length()`, which did exactly that, is deprecated and
-  warns; `plot_trajectory()` prints its own fidelity so you are never guessing.
-- **The same summary number is compatible with different trajectories.** Report the
-  scalar and the plot together; neither alone is the finding.
-
-None of these statistics are new — segment-embed-trajectory has been done at scale
-in marketing and in clinical speech research, and psychology has its own
-chained-utterance measure with a published dispute about what it means. What this
-package adds is that they run in R, on commercial APIs, with a permutation null
-attached. Their validity on interview-length material has not been established by
-anyone, including us.
+Start with the two displays that project nothing. `plot_recurrence()` draws the
+segment-by-segment similarity matrix, and `plot_arc()` plots one full-space
+quantity against narrative position; every value in both is computed in the full
+space. `plot_trajectory()` comes third, drawing one panel per document with each
+segment placed by a two-dimensional layout and joined in the order it was
+spoken — the only one of the three whose geometry you have to qualify as you
+read it. `trajectory_stats()` summarises the path, `trajectory_null()` asks
+whether the order matters, `trajectory_fidelity()` says how much of the
+distance structure the picture keeps, and `recurrence_stats()` returns the
+recurrence-quantification measures — which are undefined on short documents,
+where the matrix has no line to measure. What the picture supports and what it does
+not, and why a short document cannot settle a single transition, are in
+[docs/reading-plots.md](docs/reading-plots.md) and in `?plot_trajectory`.
 
 ## 10. Choosing a provider
 
@@ -661,7 +485,7 @@ embed(texts, provider = "openai")
 |---|---|---|---|
 | `gemini` | `gemini-embedding-001` | 3,072 | Generous free tier; multilingual; a daily quota a large job can hit |
 | `voyage` | `voyage-4` | 1,024 | Multilingual; strict free-tier rate limit |
-| `openai` | `text-embedding-3-small` | 1,536 | Requires billing; the least anisotropic of the three |
+| `openai` | `text-embedding-3-small` | 1,536 | Requires billing; no free tier |
 
 Override the model, or pass provider-specific options, through `...`:
 
@@ -673,37 +497,25 @@ embed(x, provider = "voyage", input_type = "document")  # prepend an instruction
 ```
 
 Options that change the returned vectors get their own cache file, so results from
-different settings never mix. The key is built from the *resolved* options rather than
-from what you typed, so `embed(x, provider = "gemini")` and the same call with
-`task_type = "SEMANTIC_SIMILARITY"` share a file — they send the same request — and an
-option left at `NULL` is not sent and does not enter the key. Two consequences follow.
-Changing a default in a future version moves the key, so old vectors are not silently
-served under a name that no longer describes them. And rerunning someone else's code
-with `cache = TRUE` reads their cache rather than the endpoint; pass `refresh = TRUE`
-to reach the API.
+different settings never mix. The key is built from the *resolved* options rather
+than from what you typed, so an option left at `NULL` does not enter it and a
+default that changes in a future version moves the key rather than silently
+serving old vectors under a name that no longer describes them. Running someone
+else's code with `cache = TRUE` reads their cache rather than the endpoint; pass
+`refresh = TRUE` to reach the API. `?embed` has the rest.
 
-**The defaults are chosen, not inherited.** Every statistic in this package rests on a
-cosine similarity matrix, which makes every task here a symmetric one, and the three
-APIs do not agree on what to do when you say nothing.
+**The defaults are chosen, not inherited.** Every statistic in this package rests
+on a cosine similarity matrix, which makes every task here a symmetric one, and
+the three APIs do not agree on what to do when you say nothing. Gemini's
+`task_type` defaults to `"SEMANTIC_SIMILARITY"`, because sending no task type is
+not a neutral option. Voyage's `input_type` defaults to `NULL`, its own default,
+because setting it makes the endpoint prepend a retrieval instruction to your
+text before encoding. OpenAI exposes no equivalent parameter. `?embed` gives the
+argument for each.
 
-For **Gemini**, `task_type` defaults to `"SEMANTIC_SIMILARITY"`. Sending no task type
-is not a neutral option: the API enum defines `TASK_TYPE_UNSPECIFIED` as "unset value,
-which will default to one of the other enum values", it holds no value meaning *no
-conditioning*, and omitting the field returns vectors identical to `"RETRIEVAL_QUERY"`
-— the query side of an asymmetric retrieval pair. The three symmetric task types
-(`SEMANTIC_SIMILARITY`, `CLUSTERING`, `CLASSIFICATION`) disagree with each other about
-as much as two different providers do, so the choice has to be stated.
-
-For **Voyage**, `input_type` defaults to `NULL`, which is Voyage's own default and
-sends no instruction. Setting it to `"document"` or `"query"` makes the endpoint
-prepend a retrieval instruction before encoding, so what you embed is the instruction
-plus your text rather than your text.
-
-**OpenAI** exposes no equivalent parameter and always encodes the string as given.
-
-A common condition across all three is therefore not attainable. State the options you
-used whenever you report a comparison across providers — otherwise the comparison is of
-provider *and* configuration.
+A common condition across all three is therefore not attainable. State the
+options you used whenever you report a comparison across providers — otherwise
+the comparison is of provider *and* configuration.
 
 **Vectors from different providers are not comparable.** They live in different spaces
 with different dimensionalities. Compare *relations* between them —
@@ -748,6 +560,11 @@ as the transcripts they came from, and the same care about what you deposit publ
 third-party language-model service" belongs in the consent form if that is what will
 happen.
 
+**The cache is a second copy of the text.** `embed()` writes what you sent to disk
+verbatim and unencrypted, so the cache inherits whatever obligations the responses
+carry. Pass `cache = FALSE`, or set `cache_dir` to a controlled-access location, and
+say which you did in the data-management plan.
+
 ## Relation to other packages
 
 `qualembed` is the *confirmatory calibration* layer for survey research: theory
@@ -765,4 +582,4 @@ citation("qualembed")
 
 ## License
 
-GPL-3. Issues and pull requests: <https://github.com/PsycholoStudio/qualembed>.
+GPL (>= 3). Issues and pull requests: <https://github.com/PsycholoStudio/qualembed>.

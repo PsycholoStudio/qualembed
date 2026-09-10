@@ -1,7 +1,7 @@
 Package: qualembed
 Type: Package
 Title: Embedding-Based Semantic Measurement and Calibration for Survey and Qualitative Text
-Version: 0.5.0
+Version: 1.0.0
 Authors@R: person("Toshizumi", "Muta", email = "toshizumi.muta@psycholo.studio",
                   role = c("aut", "cre"))
 Description: A thin, auditable toolkit for measuring the meaning of nominal and
@@ -27,6 +27,7 @@ Imports:
     dplyr
 Suggests:
     MASS,
+    patchwork,
     psych,
     car,
     EGAnet,
@@ -36,4 +37,5 @@ Suggests:
     readxl,
     quanteda,
     scales
+Language: en
 Config/roxygen2/version: 8.0.0

@@ -2,51 +2,80 @@
 % Please edit documentation in R/stats-viz.R
 \name{as_segments}
 \alias{as_segments}
-\title{分割済みテキストを軌跡関数が受け取れる形に整える}
+\title{Convert already-segmented text into the segment table the package expects}
 \usage{
 as_segments(x, ...)
 }
 \arguments{
-\item{x}{data.frame / 名前付き文字ベクトル / 名前付きリスト /
-quanteda corpus}
+\item{x}{The segmented text: a data frame with one row per segment, a
+named character vector (names become \code{doc_id}), a named list of
+character vectors (one element per document, each in order), a
+\pkg{quanteda} corpus, or an existing \code{qe_segments} object.}
 
-\item{doc_id, segid, text}{列名を明示する場合に指定（既定は自動照合）}
-
-\item{renumber}{TRUE なら segid を文書内で振り直す}
-
-\item{drop_empty}{空文字・NA の行を落とす（既定 TRUE）}
-
-\item{unit}{分割単位の記録（"sentence" など）。図表の注に使う。}
-
-\item{quiet}{導出時のメッセージを抑制}
+\item{...}{Arguments passed to the method for \code{x}. The data frame
+method accepts \code{doc_id}, \code{segid} and \code{text} to name those
+columns explicitly when the automatic alias matching is ambiguous or
+wrong; \code{renumber} (logical, default \code{FALSE}) to renumber
+\code{segid} from row order within each document; \code{drop_empty}
+(logical, default \code{TRUE}) to discard empty and \code{NA} segments;
+\code{unit}, a string recording the unit of segmentation (for example
+\code{"sentence"}) that is stored as an attribute for figure and table
+notes; and \code{quiet} (logical) to suppress the messages reporting what
+was derived.}
 }
 \value{
-class c("qe_segments", "data.frame")。列は
-  doc_id, segid, text, n_words, n_char, docname と、元の追加列。
+An object of class \code{c("qe_segments", "data.frame")} with
+  columns \code{doc_id}, \code{segid}, \code{text}, \code{n_words},
+  \code{n_char} and \code{docname} (\code{doc_id.segid}, unique by
+  construction), followed by any other columns of the input, which are
+  carried through unchanged. Rows are ordered by document in order of first
+  appearance, then by \code{segid}.
 }
 \description{
-分割済みテキストを軌跡関数が受け取れる形に整える
+Standardises text that has already been split into segments so that the
+trajectory and similarity functions can consume it. This is the entry point
+for the package's text side: how the text was split is the analyst's
+decision, and this function takes no part in it. Segmenting the text
+yourself and passing the result here is the ordinary path;
+\code{\link{segment_text}} is a convenience, not a requirement.
 }
 \details{
-分割の規則は分析者が決めるものである。この関数は「どう切ったか」には
-一切関与せず、「切った結果」を共通の形に揃えるだけの入口である。
-segment_text() を使わずに自分で分割してよいし、そのほうが普通である。
+The result satisfies a simple contract: one row per segment, with
+\code{doc_id} identifying the document (a participant, an interview) and
+\code{text} holding the segment. \code{segid} gives the order within a
+document and is derived from row order when absent. Column names follow
+ecosystem convention: \code{doc_id} is what \pkg{readtext} returns and the
+default \code{docid_field} of \code{quanteda::corpus()}, and \code{segid} is
+the \code{quanteda::corpus_segment()} name. The older names \code{doc} and
+\code{index} are accepted as input aliases and always will be. Column
+matching is by alias table, never by guessing. A missing \code{text}
+column, or two columns matching the same role, stops the function and asks
+you to name the column, because silently using the wrong column is the
+worst outcome of all. A missing \code{doc_id} or \code{segid} is filled in
+instead, with a message saying so: one document named \code{"doc1"}, and
+segment order taken from the order of the rows.
 
-現実的な出発点は三つある。
+Three practical starting points:
 \enumerate{
-  \item **質的分析ソフトの書き出し**（CSV/Excel）。Taguette は
-    `id, document, tag, content`、QualCoder は `File, Coder, Coded, ...`
-    の形で1行1セグメントを吐く。列名は自動照合されるので、
-    `read.csv()` して渡すだけでよい。
-  \item **逐語録ファイル**（1参加者1ファイル）。話者交替を空行区切りの
-    段落とし、話者名を `名前:` の接頭辞で書く。read_segments() が
-    .txt / .docx / .vtt / .srt を読む。
-  \item **自作の分割**。data.frame(doc_id, text) を行順に並べるだけで
-    よい。segid は行順から導出される。
+  \item \strong{An export from qualitative analysis software} (CSV or
+    Excel). Taguette writes \code{id, document, tag, content} and QualCoder
+    writes \code{File, Coder, Coded, ...}, both one row per coded segment.
+    Those column names are matched automatically, so you can read the
+    export with \code{read.csv()} and pass the result straight in.
+  \item \strong{Transcript files}, one file per participant. Write speaker
+    turns as blank-line-separated paragraphs with the speaker as a
+    \code{Name:} prefix; \code{\link{read_segments}} reads \code{.txt},
+    \code{.docx}, \code{.vtt} and \code{.srt}.
+  \item \strong{Your own segmentation.} A \code{data.frame(doc_id, text)} in
+    the intended order is enough; \code{segid} is derived from row order.
 }
 
-注意: 「1行1セグメントのテキストファイル」は勧めない。その形を実際に
-吐くのは Whisper の txt 出力だが、あの行は2〜5秒の音声区間であって
-話者交替でも文でも意味単位でもない。正しく構造化されているように
-見えて、そうでない——設計上もっとも避けたい失敗である。
+One format to avoid: a plain text file with one segment per line. The tool
+that actually produces that shape is Whisper's \code{.txt} output, whose
+lines are two- to five-second audio spans rather than speaker turns,
+sentences, or units of meaning. It looks correctly structured and is not.
+}
+\seealso{
+\code{\link{segment_text}} to split long texts, and
+  \code{\link{is_segments}} to test the class.
 }

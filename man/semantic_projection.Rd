@@ -2,22 +2,56 @@
 % Please edit documentation in R/stats-viz.R
 \name{semantic_projection}
 \alias{semantic_projection}
-\title{アンカー重心の差ベクトルが定義する軸に項目を射影する
-a = mean(high) - mean(low),  p_i = x_i・a / ||a||}
+\title{Project items onto an axis defined by two sets of anchors}
 \usage{
 semantic_projection(item_mat, high_mat, low_mat)
 }
 \arguments{
-\item{item_mat}{項目の embedding 行列 (n × d)}
+\item{item_mat}{A numeric embedding matrix of the items to be scored, one
+row per item.}
 
-\item{high_mat}{高極アンカー句の embedding 行列}
+\item{high_mat}{An embedding matrix of the anchor texts marking the high
+pole, with at least one row.}
 
-\item{low_mat}{低極アンカー句の embedding 行列}
+\item{low_mat}{An embedding matrix of the anchor texts marking the low
+pole, with at least one row. All three matrices must come from the same
+provider and model, so that they share the same number of columns, and
+the two anchor centroids must not coincide.}
 }
 \value{
-項目ごとの射影スコア（名前付き数値ベクトル）
+A named numeric vector of projection scores, one per row of
+  \code{item_mat} and named by \code{rownames(item_mat)}. The scores are
+  neither centered nor normalised, so their ordering and relative spacing
+  are interpretable but their absolute level is not.
 }
 \description{
-アンカー重心の差ベクトルが定義する軸に項目を射影する
-a = mean(high) - mean(low),  p_i = x_i・a / ||a||
+Implements the semantic projection of Grand et al. (2022). The axis is the
+difference between the centroids of a high-pole and a low-pole set of
+anchor texts, and each item is scored by the length of its projection onto
+that axis. Use it when theory names the dimension to be measured, instead
+of letting a component analysis choose one.
+}
+\details{
+The axis is \code{a = colMeans(high_mat) - colMeans(low_mat)} and the score
+of an item \code{x} is \code{sum(x * a) / sqrt(sum(a^2))}.
+}
+\examples{
+# Anchors ship as character vectors; embed them with the items, then
+# subset the matrix. Keep drop = FALSE: with the thinned set ($C, one
+# word per pole) the subset would otherwise stop being a matrix.
+a <- valence_anchors$en$A
+\dontrun{
+items <- c("cheerful", "downcast", "content")
+e <- embed(c(items, a$high, a$low), provider = "gemini")
+semantic_projection(e[items, ],
+                    e[a$high, , drop = FALSE],
+                    e[a$low, , drop = FALSE])
+}
+}
+\seealso{
+\code{\link{valence_anchors}} and \code{\link{prestige_anchors}}
+  for anchor sets shipped with the package,
+  \code{\link{coords_2d}}, whose \code{axis} argument takes the same
+  anchor contrast, and \code{\link{plot_arc}}, which projects segments onto
+  it.
 }

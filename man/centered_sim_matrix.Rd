@@ -2,42 +2,55 @@
 % Please edit documentation in R/stats-viz.R
 \name{centered_sim_matrix}
 \alias{centered_sim_matrix}
-\title{中心化してからのコサイン類似度行列}
+\title{Compute cosine similarities after mean-centering the embedding}
 \usage{
 centered_sim_matrix(mat)
 }
 \arguments{
-\item{mat}{embedding行列 (n × d)。`embed()` の出力。}
+\item{mat}{A numeric matrix with one row per text, as returned by
+\code{\link{embed}}. At least three rows are required, and no row may sit
+exactly at the mean of the pool.}
 }
 \value{
-n × n の類似度行列。生のものと取り違えないよう、属性
-  `centering = "mean"` を付す。
+An n by n similarity matrix, carrying the attribute
+  \code{centering = "mean"} so that centered matrices cannot be mistaken
+  for raw ones.
 }
 \description{
-埋め込みは原点のまわりに散らばっておらず、どの方向にも共通成分が乗って
-いる。そのため生のコサインは実質的に負にならない（本研究の項目文では
-25項目300ペア・135項目9,045ペアのいずれも負がゼロ）。対立を問う質問
-——逆転項目、反対の構成概念、賛否——では、これは「対立が見つからない」
-のではなく「対立を表現できる座標を使っていない」ことを意味する。
+Subtracts the column means of the embedding matrix before measuring angles,
+which allows negative similarities to appear. Embeddings are not spread
+around the origin: every vector shares a large common component, so raw
+cosines are almost never negative even between texts that mean opposite
+things. For questions about opposition
+(reverse-keyed items, opposing constructs, agreement versus disagreement)
+this means that no coordinates capable of expressing opposition are in use,
+rather than that no opposition exists. Intended for exploration and for
+sign-related checks; confirmatory analyses in the accompanying paper use
+\code{\link{cos_sim_matrix}} instead.
 }
 \details{
-列平均を抜いてから角度を測ると負が戻る（本研究では 58〜74%）。ただし
-二つの代償がある。第一に、中心化後の類似度は**項目プール依存**になる。
-項目を一つ足し引きすればすべてのペアの値が動くので、生のコサインのように
-「そのペアだけの性質」としては読めない。第二に、戻るのは符号の情報だけで、
-分割の復元は改善しない（付録の表を参照。生 .373 / 中心化 .374）。
+Centering restores negative values, but at two costs. First, the
+similarities become pool-dependent: adding or removing one text moves every
+pair, so a centered value cannot be read as a property of that pair alone
+the way a raw cosine can. Second, whether it helps recover a partition is
+not something a rule can settle in advance: it wins on some pools and loses
+on others, and the pools where it wins are not the ones where whitening or
+eigencomponent removal win.
 
-重要: これは符号の「修復」ではない。中心化するとベクトルの総和が 0 に
-なるため、中心化グラム行列の全要素和は恒等的に 0 であり、**対立が
-あろうがなかろうが負の値は必ず生じる**。検出したい現象を演算が作って
-しまう以上、負が出たこと自体は何の証拠にもならない。問えるのは「負が
-正しい対に落ちるか」だけで、本研究の実測ではその利得は「全部正と
-答える」規則を 1〜9 ポイント上回るにとどまる。
+Centering is not a repair of the sign. After centering, the vectors sum to
+zero, so the entries of the centered Gram matrix sum to zero identically
+and negative values must occur whether or not any opposition is present.
+The appearance of negative similarities is therefore not evidence of
+anything on its own. The answerable question is whether the negatives fall
+on the pairs theory says are opposed, which needs a known key to check
+against and a baseline of calling every pair positive to beat.
 
-したがって確証的な分析には使わない。`cos_sim_matrix()` を既定とし、
-本関数は「読者が思いつく手を実際に試して落ちることを示す」ために置く。
+With only two rows the two centered vectors necessarily point in opposite
+directions and the similarity is fixed at -1 by construction, so the
+function stops rather than return a meaningless number.
 }
 \seealso{
-[cos_sim_matrix()]（中心化なし）、[double_center()]（類似度行列
-  そのものを二重中心化する別の操作）
+\code{\link{cos_sim_matrix}} (no centering) and
+  \code{\link{double_center}}, a different operation that centers the
+  similarity matrix itself.
 }

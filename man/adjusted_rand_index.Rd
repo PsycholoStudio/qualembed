@@ -2,18 +2,27 @@
 % Please edit documentation in R/stats-viz.R
 \name{adjusted_rand_index}
 \alias{adjusted_rand_index}
-\title{Adjusted Rand Index（Hubert & Arabie, 1985）
-外部パッケージへの依存を避けるため直接実装}
+\title{Compute the adjusted Rand index between two partitions}
 \usage{
 adjusted_rand_index(x, y)
 }
 \arguments{
-\item{x, }{y 2つの分割（同じ長さのラベルベクトル）}
+\item{x, y}{Two label vectors of equal length describing the same objects in
+the same order. Any type accepted by \code{table} may be used, and the
+two partitions need not have the same number of classes.}
 }
 \value{
-ARI（チャンスレベル = 0、完全一致 = 1）
+A single number: 0 at chance level and 1 for identical partitions.
+  Values below 0 indicate agreement worse than chance. If either partition
+  is degenerate, so that the index is undefined, 0 is returned.
 }
 \description{
-Adjusted Rand Index（Hubert & Arabie, 1985）
-外部パッケージへの依存を避けるため直接実装
+Chance-corrected agreement between two partitions of the same objects
+(Hubert and Arabie, 1985). Implemented directly rather than taken from
+another package, so that the reproduction code carries no extra dependency
+for a single formula.
+}
+\seealso{
+\code{\link{test_ari_sim}} and \code{\link{test_ari}}, which refer
+  this index to a permutation null.
 }

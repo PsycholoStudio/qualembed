@@ -2,32 +2,70 @@
 % Please edit documentation in R/stats-viz.R
 \name{trajectory_stats}
 \alias{trajectory_stats}
-\title{分割された文書の軌跡統計}
+\title{Summarise the path each segmented document takes}
 \usage{
 trajectory_stats(emb, seg, axis = NULL)
 }
 \arguments{
-\item{emb}{セグメントの埋め込み行列（rownames が docname なら名前で照合）}
+\item{emb}{A numeric matrix of segment embeddings, one row per segment. When
+its row names are the segment table's \code{docname} values the rows are
+matched by name; otherwise they are matched by position and must already
+be in the table's order.}
 
-\item{seg}{as_segments() の契約を満たす表}
+\item{seg}{A segment table satisfying the \code{\link{as_segments}}
+contract.}
 
-\item{axis}{投影軸（semantic_projection の返り値と同じ長さ）。任意。}
+\item{axis}{An optional numeric vector of per-segment scores on a projection
+axis, as returned by \code{\link{semantic_projection}}, with one value
+per row of \code{emb}. Adds axis summaries to the output. Defaults to
+\code{NULL}.}
 }
 \value{
-文書ごとの data.frame。
-  path_length はセグメント間コサイン距離の総和だが、**セグメント数と
-  強く相関する**ため単独で解釈してはならない（デモ15では r = .92–.96）。
-  step_mean はそれを段数で割ったもの。straightness は正味変位÷経路長で、
-  1 に近いほど一方向に進み、0 に近いほど行きつ戻りつしている。
-  異なる軌跡が同じ集約値を与えうる（Palominos et al., 2024）ため、
-  スカラーと図は必ず併せて報告すること。
+A data frame with one row per document that has at least two
+  segments:
+  \describe{
+    \item{\code{doc_id}, \code{n_seg}, \code{n_words}}{document identifier,
+      number of segments, total words.}
+    \item{\code{path_length}}{sum of the cosine distances between
+      consecutive segments. Longer documents give longer paths whatever
+      the text does, so this correlates with \code{n_seg} and must not be
+      interpreted on its own; use \code{step_mean} or
+      \code{straightness} instead.}
+    \item{\code{step_mean}}{path length divided by the number of steps.}
+    \item{\code{net_displacement}}{cosine distance from the first segment
+      to the last.}
+    \item{\code{straightness}}{net displacement divided by path length.
+      Near 1 the document moves in one direction; near 0 it doubles back.}
+  }
+  When \code{axis} is supplied, the columns \code{axis_mean},
+  \code{axis_sd}, \code{axis_range}, \code{axis_start} and
+  \code{axis_end} are appended. Documents with a single segment are
+  dropped.
 }
 \description{
-統計量そのものは新しくない。段数で割った経路長（Toubia らの speed）、
-経路長に対する正味変位の比（circuitousness の逆数）、逐次類似度は、
-Toubia ら (2021)、Palominos ら (2024)、Bedi ら (2015) がすでに定義し
-使っている。ここでの寄与は R で同じ検定の作法に載せたことだけである。
+Returns one row of path statistics per document: how far a text travels
+through the semantic space, how far it ends up from where it started, and
+how directly it gets there. Use it once long responses or transcripts have
+been segmented, and read it together with \code{\link{trajectory_null}},
+which says whether an observed value differs from what the same segments in
+any other order would give.
+
+The statistics themselves are not new. Path length divided by the number of
+steps is the speed of Toubia et al. (2021), the ratio of net displacement
+to path length is the reciprocal of their circuitousness, and consecutive
+similarity is used by Palominos et al. (2024) and Bedi et al. (2015). What
+this function adds is an R implementation on the same testing footing as
+the rest of the package.
+}
+\details{
+Different trajectories can yield identical aggregates (Palominos et al.,
+2024), so report these scalars alongside a display rather than in place of
+one: \code{\link{plot_arc}} and \code{\link{plot_recurrence}} show the shape
+they summarise. Note also that no statistic here resolves an individual
+transition. See \code{\link{trajectory_null}} for the arithmetic bound that
+makes a single step untestable in short documents.
 }
 \seealso{
-[trajectory_null()], [plot_recurrence()], [plot_arc()]
+\code{\link{trajectory_null}}, \code{\link{plot_recurrence}},
+  \code{\link{plot_arc}}
 }

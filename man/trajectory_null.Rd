@@ -2,38 +2,78 @@
 % Please edit documentation in R/stats-viz.R
 \name{trajectory_null}
 \alias{trajectory_null}
-\title{軌跡統計の帰無分布（文書内で段の順序を入れ替える）}
+\title{Test a trajectory statistic against reorderings of the same document}
 \usage{
 trajectory_null(emb, seg, n_perm = 999, stat = "path_length", lag_min = 3)
 }
 \arguments{
-\item{emb}{セグメントの埋め込み行列}
+\item{emb}{A numeric matrix of segment embeddings, one row per segment;
+rows are matched to the table by \code{docname} where possible, otherwise
+by position (see \code{\link{trajectory_stats}}).}
 
-\item{seg}{as_segments() の契約を満たす表}
+\item{seg}{A segment table satisfying the \code{\link{as_segments}}
+contract.}
 
-\item{n_perm}{並べ替え回数（既定 999）}
+\item{n_perm}{Integer; the number of reorderings. Defaults to 999.}
 
-\item{stat}{評価する統計量（"path_length" / "step_mean" / "straightness"
-/ "far_mean"）}
+\item{stat}{Character; the statistic to evaluate, either
+\code{"path_length"}, \code{"step_mean"}, \code{"straightness"} or
+\code{"far_mean"}. Defaults to \code{"path_length"}.}
 
-\item{lag_min}{stat = "far_mean" で「離れている」とみなす最小の段差（既定 3）}
+\item{lag_min}{Integer; for \code{stat = "far_mean"}, the smallest
+separation in segment positions that counts as distant. Defaults to 3.}
 }
 \value{
-文書ごとの data.frame(doc_id, n_seg, observed, null_mean, z, p)。
-  p は両側で、(#{|null - mean| >= |obs - mean|} + 1) / (n_perm + 1)。
+A data frame with one row per document of at least three segments
+  and columns \code{doc_id}, \code{n_seg}, \code{observed},
+  \code{null_mean}, \code{z} (the observed value in standard deviations of
+  the null) and \code{p}. The p value is two-sided: the number of
+  reorderings with |null - null_mean| >= |observed - null_mean|, plus one,
+  divided by \code{n_perm + 1}. Shorter documents are dropped, as are
+  documents with no pair at least \code{lag_min} apart when
+  \code{stat = "far_mean"}.
 }
 \description{
-経路長や直進度は、それ単独では大きいのか小さいのか判定できない。
-同じ段を無作為な順序で並べ替えれば、同じ段数・同じ語数・同じ内容を
-保ったまま「順序だけを壊した」比較対象が得られる。観測値がこの分布の
-どこに落ちるかが、順序が担っている情報の量である。局所的に一貫した
-語りは、並べ替えた自分より短い距離しか動かないはずである。
+A path length or a straightness value cannot be called large or small on
+its own. Reordering a document's own segments holds the number of
+segments, the word count and the content fixed while destroying the order,
+which gives the value the statistic would take if the sequence carried
+nothing. Where the observed value falls in that distribution is how much
+the ordering is doing: a locally coherent narrative should travel less
+than its own reorderings.
+
+\code{stat = "far_mean"} tests what a recurrence plot displays. It takes
+the mean cosine between segments at least \code{lag_min} positions apart
+and compares it with the same reorderings. Reordering leaves the set of
+similarities untouched and changes only which pairs are near one another
+in the narrative, so this null asks precisely whether the ordering creates
+the structure on the plot. An observed value \emph{above} the null is a
+return to earlier material and one \emph{below} it a topic shift; use it
+to decide whether a block that caught the eye in
+\code{\link{plot_recurrence}} is more than chance.
 }
 \details{
-\code{stat = "far_mean"} は、再帰プロットが見せる構造をそのまま検定する。
-語りの上で lag_min 段以上離れた対どうしの平均コサインを取り、順序を
-並べ替えた分布と比べる。並べ替えても類似度の値の集合は変わらないので、
-動くのは「どの対が近くに来るか」だけである。観測値が帰無より**高い**なら
-前の話題への回帰、**低い**なら話題の転換である。plot_recurrence() で
-目に付いたブロックが偶然かどうかは、この統計量で決める。
+\strong{The resolution of a single transition is fixed by arithmetic, so
+this function tests at the document level only.} Reordering makes each
+adjacent pair a random pair drawn from that document's own n(n - 1)/2
+pairwise distances, and that set is the whole null distribution available
+for one step. The smallest attainable p for a document of n segments is
+therefore 2/(n^2 - n + 2): .14 at four segments, .045 at seven and .03 at
+eight, while a six-segment document cannot reach .05 at all. The ceiling
+is known before the data are seen. Do not read a non-significant result
+from a short document as evidence that its ordering carries nothing, and
+do not attempt a verdict on an individual transition at the lengths a
+survey returns, where the arithmetic above puts the answer out of reach
+before any text is embedded.
+
+For \code{stat = "far_mean"} the count of distant pairs falls away quickly
+in short documents: at the default \code{lag_min} a five-segment document
+has three of them and a four-segment one has a single pair, so the mean is
+not worth reading below about six segments.
+Permutation is within document: documents are tested independently and the
+p values are not corrected across them.
+}
+\seealso{
+\code{\link{trajectory_stats}}, \code{\link{plot_recurrence}},
+  \code{\link{plot_arc}}
 }

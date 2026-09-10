@@ -2,29 +2,76 @@
 % Please edit documentation in R/stats-viz.R
 \name{recurrence_stats}
 \alias{recurrence_stats}
-\title{再帰定量化（RQA）: 類似度行列を固定再帰率で二値化して要約する}
+\title{Quantify recurrence in a segmented document}
 \usage{
 recurrence_stats(emb, seg, rr = 0.05, lmin = 2)
 }
 \arguments{
-\item{emb}{セグメントの埋め込み行列}
+\item{emb}{A numeric matrix of segment embeddings, one row per segment;
+rows are matched to the table by \code{docname} where possible, otherwise
+by position.}
 
-\item{seg}{as_segments() の契約を満たす表}
+\item{seg}{A segment table satisfying the \code{\link{as_segments}}
+contract.}
 
-\item{rr}{目標再帰率（既定 .05）}
+\item{rr}{Numeric; the target recurrence rate. The threshold is the
+corresponding quantile of that document's off-diagonal similarities.
+Defaults to .05.}
 
-\item{lmin}{線とみなす最小長（既定 2）}
+\item{lmin}{Integer; the shortest run of recurrent points counted as a line.
+Defaults to 2.}
 }
 \value{
-文書ごとの data.frame(doc_id, n_seg, threshold, RR, DET, LAM, L,
-  L_max, TT, ENTR)。RR は再帰率、DET は対角線に乗る再帰の割合（同じ話題を
-  同じ順序で辿り直す度合い）、LAM は垂直線の割合（一つの話題に留まる
-  度合い）、L は反復挿話の平均長、TT は留まる長さの平均、ENTR は
-  対角線長分布のエントロピー。
+A data frame with one row per document of at least four segments:
+  \describe{
+    \item{\code{doc_id}, \code{n_seg}, \code{threshold}}{document
+      identifier, number of segments, cosine cut-off used.}
+    \item{\code{RR}}{recurrence rate actually attained.}
+    \item{\code{DET}}{determinism: share of recurrent points lying on
+      diagonal lines, that is, how far the document retraces the same
+      topics in the same order.}
+    \item{\code{LAM}}{laminarity: share lying on vertical lines, that is,
+      how far it stays on one topic.}
+    \item{\code{L}, \code{L_max}}{mean and longest diagonal line, the
+      average and maximum length of a repeated episode.}
+    \item{\code{TT}}{trapping time: mean vertical line length.}
+    \item{\code{ENTR}}{Shannon entropy of the diagonal line-length
+      distribution.}
+  }
+  \code{DET} and \code{LAM} are 0 and the remaining line-based columns are
+  NA when the document contains no line of at least
+  \code{lmin} points.
 }
 \description{
-埋め込みベクトルはそれ自体が状態なので、遅延埋め込み再構成は不要で
-ある（m = 1, τ = 1）。これは文章に RQA を当てるときの最大の人工物源を
-取り除く。閾値は固定再帰率で決める——プロバイダごとにコサインの
-尺度が違い、文書ごとに長さが違うため、絶対閾値では比較できない。
+Recurrence quantification analysis (RQA) for embedded text. The segment
+similarity matrix is binarised at a fixed recurrence rate and the
+resulting pattern of recurrent points is summarised by its diagonal and
+vertical lines. Use it on documents long enough to contain repeated
+passages; at the lengths a survey returns the line-based columns are
+undefined (see Details).
+
+No delay embedding is required here. An embedding vector is already the
+state of the system, so m = 1 and tau = 1, which removes the largest
+source of artefact in applying RQA to text. The threshold is set from a
+fixed recurrence rate rather than an absolute cosine, because the cosine
+scale differs between providers and the number of segments differs between
+documents, so no absolute cut-off is comparable across either.
+}
+\details{
+\strong{The line-based measures need documents an order of magnitude
+longer than a typical survey response.} At the handful of segments a
+survey answer yields, the recurrence matrix contains no diagonal or
+vertical line at all, so DET,
+LAM, L, TT and ENTR carry no information: the first two come back as 0
+and the rest as NA. They are provided
+because longer material makes them computable, not because this package
+has evidence that they measure anything at survey lengths; interview
+transcripts are where they would first become usable. At shorter lengths use
+\code{\link{plot_recurrence}}, which needs no threshold and stays readable,
+and \code{\link{trajectory_null}} with \code{stat = "far_mean"}, which tests
+the same structure without requiring lines.
+}
+\seealso{
+\code{\link{plot_recurrence}}, \code{\link{trajectory_null}},
+  \code{\link{trajectory_stats}}
 }

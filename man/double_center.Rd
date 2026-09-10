@@ -2,18 +2,28 @@
 % Please edit documentation in R/stats-viz.R
 \name{double_center}
 \alias{double_center}
-\title{類似度行列の二重中心化}
+\title{Double-center a similarity matrix}
 \usage{
 double_center(sim_mat)
 }
 \arguments{
-\item{sim_mat}{n × n の類似度行列}
+\item{sim_mat}{A square n by n similarity matrix, for example the output of
+\code{\link{cos_sim_matrix}}.}
 }
 \value{
-同じ大きさの二重中心化行列
+An n by n matrix of the same dimensions and dimnames whose rows and
+  columns each sum to zero. The diagonal is no longer 1 and the entries are
+  no longer bounded by -1 and 1, so the result is a contrast structure
+  rather than a similarity.
 }
 \description{
-行平均・列平均・全体平均を抜く。`centered_sim_matrix()` が**埋め込み**を
-中心化するのに対し、こちらは出来上がった**類似度行列**を中心化する別の
-操作で、ハブ構造（特定の項目が誰とでも似ている）の統制に使う。
+Removes the row means, the column means and the grand mean from a
+similarity matrix. Whereas \code{\link{centered_sim_matrix}} centers the
+embedding, this centers the finished similarity matrix; use it to control
+hub structure, that is, the tendency of a few items to be similar to
+everything.
+}
+\seealso{
+\code{\link{cos_sim_matrix}} for the matrix this transforms, and
+  \code{\link{centered_sim_matrix}}, which centers the embedding instead.
 }

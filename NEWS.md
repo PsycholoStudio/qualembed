@@ -1,3 +1,78 @@
+# qualembed 1.0.0
+
+初回の安定版。本稿の分析を生み出した版であり、Zenodo に保管して DOI を
+付ける。以後 `remotes::install_github("PsycholoStudio/qualembed@v1.0.0")`
+で、リポジトリがその後どう動いても同じコードが手に入る。
+
+版を固定するのがこの版の目的だが、公開前の点検で実行に関わる不備が
+見つかったため、それらの修正も含む。
+
+## 直した不具合
+
+* **UTF-8 でないロケールで日本語が壊れていた。** `LC_ALL=C`（サーバでは
+  既定であることが多い）ではテキストの Encoding が "unknown" のまま入り、
+  R が 1 バイトを 1 文字として扱う。`segment_text()` は略語保護の正規表現が
+  非 ASCII で失敗し、`as_segments()`・`read_segments()` は `n_char` が
+  バイト数になり、`read_segments()` は正しい UTF-8 の CSV を「符号化が違う」
+  と誤診して停止していた。三つの入口すべてで符号化を宣言するようにした。
+  `tests/test-locale.R` が退行を見張る。
+* **呼べない関数があった。** `procrustes_m2()`・`procrustes_sensitivity()`・
+  `plot_embedding_2d()` が `@export` を欠き、ヘルプは出るのに関数が
+  見つからない状態だった。
+* **`test_ari()` に類似度行列を渡すと、エラーにならず別の答えを返していた。**
+  類似度の類似度を取ってしまうため。類似度行列を検知して
+  `test_ari_sim()` を案内するようにした。
+* `plot_trajectory()` の副題が、既定の MDS では `NA%` を印字していた。
+  MDS に説明分散が無い場合と、文書が一つで帰無を作れない場合を分けた。
+* `patchwork` が Suggests に宣言されていなかった（`plot_trajectory(text = TRUE)`
+  が使う）。
+* `.rotate_to()`・`pca_coords()`・`tsne_2d()` の重複定義を除いた。
+* `cache_info()` が読んだディレクトリを返すようにした（`cache_dir` 属性と
+  メッセージ）。既定は作業ディレクトリからの相対パスなので、場所が
+  分からないと空の結果を「キャッシュが無い」と誤読する。
+
+## 変えた仕様
+
+* `plot_bilingual()` の `ve_en`・`ve_ja`・`title` を省略可能にした（本体で
+  使っていない引数を必須で受けていた）。
+* 利用者に見えるメッセージを英語にした。
+
+## ドキュメント
+
+* **ヘルプを全面的に英語で書き直した。** 50 の項目を、日本語からの翻訳では
+  なく英語のヘルプとして書き、`?qualembed` に読み進む順序と、この幾何が
+  担わないもの（共通成分の床と符号）の節を置いた。
+* **分析結果の実測値を除いた。** パッケージは使い方と原理の説明に徹し、
+  結果の保証はしない。残る数値は算術から一意に定まるものだけである。
+* ヘルプの記述を実装に合わせた（`recurrence_stats` の DET/LAM、
+  `as_segments` が停止する条件、`read_segments` の CP932 が効く形式、
+  `embedding_info` の返り値ほか）。
+* `CITATION.cff` と `inst/CITATION` を置き、`citation("qualembed")` が
+  ソフトウェアと論文の両方を返すようにした。
+
+# qualembed 0.6.0
+
+* **区間推定の関数を公開した: `loo_range()`、`jackknife_ci()`、
+  `cor_jackknife()`。** これまで区間は解析スクリプト側で自前に計算して
+  おり、パッケージの利用者には手段がなかった。区間推定には標本モデルが
+  要るので、材料によって出し方を分ける。人が単位（回答者・評定者）なら
+  `jackknife_ci()`、項目が単位（器具そのもの）なら `loo_range()` を使う。
+  後者は信頼区間ではなく「1 項目を抜いたときの振れ幅」で、標本を仮定せず
+  「どれか 1 項目が結果を担っていないか」に答える。どちらも統計量を関数
+  として受けるので、Δ でも ARI でも Mantel r_M でも射影相関でも使える。
+
+* **`cor_jackknife()` は相関行列のジャックナイフを積和の downdate で行う。**
+  1 観測抜くたびに `cor()` を引き直すと 2,800 名で 80 秒かかるところを、
+  有効ペア数・積和・和・平方和の 4 つから復元して 1 秒未満で返す。値は
+  再計算と一致する（`tests/test-intervals.R` が最大差 1e-14 未満を固定）。
+  downdate は「大きな和から引く」操作なので、値の範囲が極端に広い列が
+  あると桁落ちしうる。有界な整数尺度では問題にならないが、疑わしければ
+  `jackknife_ci()` と突き合わせられるようにしてある。
+
+* **`jackknife_ci(cores = )` で fork による分担ができる。** `theta` が重く
+  ブロック数が多い場合に効く。Windows と `cores = 1` では逐次に落ちる。
+  逐次と同じ値を返すことを同じテストが固定している。
+
 # qualembed 0.5.0
 
 * **`within_between_sim()` と `test_delta()` が尺度不変な Δ を返す。** 生の
@@ -24,7 +99,7 @@
   carry little of it and the plane flattens the points into a band. Measured on
   six materials under three providers, the rank correlation between plotted and
   measured distances rose in all eighteen cells: for 169 narrative segments from
-  .16--.54 under PCA to .76--.84 under MDS, against .33 and .56 for the same
+  .16--.54 under PCA to .76--.84 under MDS, against .33 and .57 for the same
   procedures applied to isotropic points. Under two of three providers the PCA
   plane held no more rank order than random points. `coords_2d()` is the new
   general entry point, `plot_trajectory()` and `trajectory_fidelity()` take

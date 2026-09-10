@@ -2,7 +2,7 @@
 % Please edit documentation in R/stats-viz.R
 \name{plot_trajectories}
 \alias{plot_trajectories}
-\title{縦断軌跡の可視化（非推奨）}
+\title{Plot longitudinal trajectories from a projection (deprecated)}
 \usage{
 plot_trajectories(
   df,
@@ -11,17 +11,27 @@ plot_trajectories(
 )
 }
 \arguments{
-\item{df}{person・time・PC1・PC2・label を含むデータフレーム}
+\item{df}{A data frame with columns \code{person}, \code{time}, \code{PC1},
+\code{PC2} and \code{label}, already in time order within person.}
 
-\item{person_col}{個人ID列名}
+\item{person_col}{Character; the name of the person-identifier column.
+Defaults to \code{"person"}.}
 
-\item{title}{図のタイトル}
+\item{title}{Character; the plot title. Defaults to
+\code{"Trajectories in semantic space"}.}
+}
+\value{
+A \pkg{ggplot2} object (printed when called at the top level): one
+  path per person across the PC1-PC2 plane,
+  with an arrowhead at its end and repelled point labels.
 }
 \description{
-plot_trajectory() に置き換えられた。新関数は埋め込み行列とセグメント表を
-直接受け取り、1段ごとの矢印を描き、その射影が距離をどれだけ保っているかを
-図に印字する。本関数は v0.2.0 との後方互換のためだけに残す。
+Deprecated, and warns when called. Superseded by
+\code{\link{plot_trajectory}}, which takes the embedding matrix and a
+segment table directly, draws an arrow for every step, and prints how well
+the projection preserves the measured distances. This function is kept only
+for backward compatibility with version 0.2.0.
 }
 \seealso{
-[plot_trajectory()]
+\code{\link{plot_trajectory}}
 }

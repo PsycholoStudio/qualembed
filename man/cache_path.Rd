@@ -2,7 +2,7 @@
 % Please edit documentation in R/embed.R
 \name{cache_path}
 \alias{cache_path}
-\title{Where `embed()` keeps its cache}
+\title{Locate the cache file that \code{embed()} uses}
 \usage{
 cache_path(
   provider,
@@ -12,23 +12,34 @@ cache_path(
 )
 }
 \arguments{
-\item{provider}{One of `"gemini"`, `"openai"`, `"voyage"`.}
+\item{provider}{Character; one of \code{"gemini"}, \code{"openai"},
+\code{"voyage"}.}
 
-\item{model}{Model identifier; the provider default when `NULL`.}
+\item{model}{Character; the model identifier. Defaults to \code{NULL},
+which uses the provider default.}
 
-\item{cache_dir}{Directory holding the cache files.}
+\item{cache_dir}{Character; the directory holding the cache files. Defaults
+to \code{file.path("output", "embed_cache")}, which is relative to the
+working directory, so a session started elsewhere will not find an
+existing cache.}
 
-\item{...}{Request options, as passed to [embed()].}
+\item{...}{Request options, as passed to \code{\link{embed}}.}
 }
 \value{
-A file path. The file need not exist.
+A file path, as a length-one character vector. The file need not
+  exist.
 }
 \description{
-Returns the path of the RDS file that [embed()] reads and writes for a given
-provider, model and set of request options. Request options that change the
-returned vector (Gemini's `task_type`, Voyage's `input_type`, an explicit
-output dimensionality) are part of the file name, so one provider can hold
-several caches at once. Use this rather than assembling the name yourself:
-a script that guessed `"<provider>_<model>.rds"` silently missed the Gemini
-cache, which carries a task-type suffix, and skipped the cells that needed it.
+Returns the path of the RDS file that \code{\link{embed}} reads and writes
+for a given provider, model and set of request options. Request options that
+change the returned vector (Gemini's \code{task_type}, Voyage's
+\code{input_type}, an explicit output dimensionality) are part of the file
+name, so one provider can hold several caches at once. Use this rather than
+assembling the name yourself: a script that guessed
+\code{"<provider>_<model>.rds"} silently missed the Gemini cache, which
+carries a task-type suffix, and skipped the cells that needed it.
+}
+\seealso{
+\code{\link{embed}}, whose cache this names, and
+  \code{\link{cache_info}} for what the cache currently holds.
 }

@@ -2,13 +2,29 @@
 % Please edit documentation in R/stats-viz.R
 \name{qe_abbreviations}
 \alias{qe_abbreviations}
-\title{文分割で保護する略語}
+\title{List the abbreviations protected during sentence splitting}
 \usage{
 qe_abbreviations()
 }
+\value{
+A character vector of abbreviations, written without the trailing
+  period.
+}
 \description{
-ICU の文境界は "Dr." のような略語で切ってしまう。分割前にこれらの
-終止符を私用領域文字へ退避し、分割後に戻す。
-拡張は c(qe_abbreviations(), "Univ")、無効化は character(0)。
-"a.m." は実際に文末に来ることが多いので既定に含めない。
+Returns the default set of abbreviations that \code{\link{segment_text}}
+protects when splitting text into sentences. ICU treats the period in
+\code{"Dr."} as a sentence boundary; before splitting, the periods of these
+abbreviations are swapped for a private-use character and restored
+afterwards, so the sentence is not broken in the middle.
+}
+\details{
+Extend the set by passing \code{c(qe_abbreviations(), "Univ")} to the
+\code{abbrev} argument of \code{\link{segment_text}}, or disable protection
+entirely with \code{character(0)}. Matching is case-sensitive and on whole
+words. \code{"a.m."} is deliberately excluded: it genuinely ends sentences
+often enough that protecting it would merge more sentences than it saves.
+}
+\seealso{
+\code{\link{segment_text}}, whose \code{abbrev} argument defaults to
+  this set.
 }

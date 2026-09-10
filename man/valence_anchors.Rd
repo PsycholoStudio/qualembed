@@ -4,7 +4,11 @@
 \alias{valence_anchors}
 \title{Pre-specified anchor sets for the valence axis (EN/JA)}
 \format{
-See the source for structure.
+A list of two languages, \code{$en} and \code{$ja}. Each holds
+  anchor sets \code{$A} (the primary, three words per pole), \code{$B} (an
+  alternative wording, also three per pole) and \code{$C} (one word per
+  pole, the thinned sensitivity set). Each set is a list of \code{$high}
+  and \code{$low} character vectors.
 }
 \usage{
 valence_anchors

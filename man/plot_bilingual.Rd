@@ -2,23 +2,54 @@
 % Please edit documentation in R/stats-viz.R
 \name{plot_bilingual}
 \alias{plot_bilingual}
-\title{日英の意味空間を横並びで比較
-各言語で独立にPCAした座標なので直接比較はできない
-（定量的な比較は procrustes_m2() で行う）}
+\title{Plot English and Japanese semantic maps side by side}
 \usage{
-plot_bilingual(df_en, df_ja, ve_en, ve_ja, title, color_var = NULL)
+plot_bilingual(
+  df_en,
+  df_ja,
+  ve_en = NULL,
+  ve_ja = NULL,
+  title = NULL,
+  color_var = NULL
+)
 }
 \arguments{
-\item{df_en, }{df_ja  pca_2d()$df（色分け列を追加したもの）}
+\item{df_en, df_ja}{Data frames of coordinates for the English and Japanese
+panels, each the \code{df} element of a \code{\link{coords_2d}} result
+(columns \code{PC1}, \code{PC2} and \code{label}), with any column named
+by \code{color_var} added by the caller. Both must contain the same
+columns. The axes are labelled \code{PC1} and \code{PC2} whatever layout
+produced them.}
 
-\item{ve_en, }{ve_ja  分散説明率}
+\item{ve_en, ve_ja}{Numeric vectors of the variance explained in each panel,
+as returned in the \code{ve} element of \code{\link{coords_2d}}. Accepted
+for API compatibility; the panels do not print these values, because the
+two reductions are not on a common scale. Default to \code{NULL}.}
 
-\item{title}{図のタイトル}
+\item{title}{Character; the plot title. Defaults to \code{NULL}.}
 
-\item{color_var}{色分け列名}
+\item{color_var}{Character; the name of the column in \code{df_en} and
+\code{df_ja} used to colour the points, as a length-one string. Defaults
+to \code{NULL} (a single colour).}
+}
+\value{
+A \pkg{ggplot2} object (printed when called at the top level): one
+  facet per language, each holding the labelled points of that language on
+  free scales, coloured by \code{color_var} where supplied.
 }
 \description{
-日英の意味空間を横並びで比較
-各言語で独立にPCAした座標なので直接比較はできない
-（定量的な比較は procrustes_m2() で行う）
+Draws two faceted panels, one per language, from coordinates computed
+separately in each language. Use it to show readers whether the same
+theoretical structure appears in both languages.
+}
+\details{
+Because each language is reduced independently, the two panels do not share
+a coordinate system: positions cannot be compared point by point across
+panels, and neither can the axes. The panel scales are therefore free, and
+the quantitative cross-language comparison belongs to
+\code{\link{procrustes_m2}} and \code{\link{mantel_test}} instead.
+}
+\seealso{
+\code{\link{plot_embedding_2d}} for a single panel, and
+  \code{\link{coords_2d}} for the coordinates it draws.
 }

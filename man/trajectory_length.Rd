@@ -2,25 +2,34 @@
 % Please edit documentation in R/stats-viz.R
 \name{trajectory_length}
 \alias{trajectory_length}
-\title{2次元投影上の軌跡長（非推奨）}
+\title{Measure path length in a two-dimensional projection (deprecated)}
 \usage{
 trajectory_length(df, person_col = "person", time_col = "time")
 }
 \arguments{
-\item{df}{pca_2d()$df にperson列とtime列を追加したもの}
+\item{df}{A data frame: the \code{df} element of \code{\link{pca_2d}} with a
+person column and a time column added. Columns \code{PC1} and
+\code{PC2} are read from it.}
 
-\item{person_col}{個人ID列名}
+\item{person_col}{Character; the name of the person-identifier column.
+Defaults to \code{"person"}.}
 
-\item{time_col}{時点列名}
+\item{time_col}{Character; the name of the time-point column, by which rows
+are ordered within person. Defaults to \code{"time"}.}
 }
 \value{
-個人ごとの2次元経路長（total_dist_2d）
+A data frame with one row per person: the identifier column,
+  \code{n_timepoints}, and \code{total_dist_2d}, the summed Euclidean
+  distance between consecutive points on the plane.
 }
 \description{
-**PC1・PC2 の平面上で距離を測る。すなわち埋め込み空間ではなく「図」を
-測っている。** 2次元への射影は距離構造を保存しない (Chari & Pachter,
-2023)。距離には trajectory_stats() を使うこと。
+Deprecated, and warns when called. \strong{It measures distance in the
+plane of PC1 and PC2, which is to say in the picture rather than in the
+embedding space}, and a two-dimensional projection does not preserve the
+distance structure (Chari and Pachter, 2023). Use
+\code{\link{trajectory_stats}}, which measures in all dimensions and reports
+a path length that can be interpreted.
 }
 \seealso{
-[trajectory_stats()]
+\code{\link{trajectory_stats}}
 }

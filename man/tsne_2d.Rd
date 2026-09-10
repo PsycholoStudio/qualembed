@@ -2,17 +2,34 @@
 % Please edit documentation in R/stats-viz.R
 \name{tsne_2d}
 \alias{tsne_2d}
-\title{t-SNE で2次元に圧縮（PCAマップの頑健性チェック用・Rtsne が必要）
-戻り値の列名は plot_embedding_2d() と互換のため PC1/PC2 とする}
+\title{Compute two-dimensional display coordinates by t-SNE}
 \usage{
 tsne_2d(mat, perplexity = NULL, seed = 2026)
+}
+\arguments{
+\item{mat}{A numeric matrix with one row per text, as returned by
+\code{\link{embed}}. Row names are used as point labels.}
 
-tsne_2d(mat, perplexity = NULL, seed = 2026)
+\item{perplexity}{Numeric; the t-SNE perplexity. Defaults to \code{NULL},
+which uses \code{max(2, floor((nrow(mat) - 1) / 3))}.}
+
+\item{seed}{Integer; the random seed. t-SNE is stochastic, so fixing the
+seed is what makes the map reproducible. Defaults to 2026.}
+}
+\value{
+A list with \code{df}, a data frame with columns \code{PC1},
+  \code{PC2} and \code{label}, and \code{ve}, which is \code{c(NA, NA)}
+  because t-SNE has no variance-explained quantity. The coordinate columns
+  are named \code{PC1}/\code{PC2} so that the result can be passed directly
+  to \code{\link{plot_embedding_2d}}.
 }
 \description{
-t-SNE で2次元に圧縮（PCAマップの頑健性チェック用・Rtsne が必要）
-戻り値の列名は plot_embedding_2d() と互換のため PC1/PC2 とする
-
-t-SNE で2次元に圧縮（PCAマップの頑健性チェック用・Rtsne が必要）
-戻り値の列名は plot_embedding_2d() と互換のため PC1/PC2 とする
+Re-derives the map with t-SNE as a robustness check on the layout returned
+by \code{\link{coords_2d}}: structure that survives a second, very different
+reduction is less likely to be an artefact of the first. Requires the
+\pkg{Rtsne} package.
+}
+\seealso{
+\code{\link{coords_2d}} for the default layout, and
+  \code{\link{umap_2d}} for the other robustness check.
 }

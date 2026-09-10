@@ -4,7 +4,9 @@
 \alias{panas_items}
 \title{PANAS item texts (EN original; JA = validated Japanese scale) and affect labels}
 \format{
-See the source for structure.
+A list of three: \code{$en} and \code{$ja}, each a named character
+  vector of the twenty terms (PA01-PA10, NA01-NA10), and \code{$affect}, a
+  character vector marking each term positive or negative.
 }
 \usage{
 panas_items

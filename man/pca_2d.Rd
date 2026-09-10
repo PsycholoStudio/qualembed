@@ -2,18 +2,27 @@
 % Please edit documentation in R/stats-viz.R
 \name{pca_2d}
 \alias{pca_2d}
-\title{PCA で2次元に圧縮（後方互換。新しいコードは coords_2d() を使うこと）}
+\title{Compute two-dimensional display coordinates by PCA}
 \usage{
 pca_2d(mat, scale = FALSE)
 }
 \arguments{
-\item{mat}{embedding行列 (n × d)}
+\item{mat}{A numeric matrix with one row per text (n items) and one column
+per embedding dimension (d), as returned by \code{\link{embed}}.}
 
-\item{scale}{TRUE で各次元を標準化（既定 FALSE）}
+\item{scale}{Logical; whether to standardise each embedding dimension before
+the decomposition. Defaults to \code{FALSE}.}
 }
 \value{
-coords_2d(layout = "pca") と同じ
+The same list as \code{coords_2d(layout = "pca")}, with elements
+  \code{df}, \code{ve}, \code{layout} and \code{lab}.
 }
 \description{
-PCA で2次元に圧縮（後方互換。新しいコードは coords_2d() を使うこと）
+Wrapper for \code{coords_2d(mat, layout = "pca")}, kept so that earlier
+scripts keep running. New code should call \code{\link{coords_2d}} directly:
+its default non-metric MDS layout preserves the original distances better in
+high-dimensional embedding spaces.
+}
+\seealso{
+\code{\link{coords_2d}}, which this wraps.
 }

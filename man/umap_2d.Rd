@@ -2,10 +2,33 @@
 % Please edit documentation in R/stats-viz.R
 \name{umap_2d}
 \alias{umap_2d}
-\title{UMAP で2次元に圧縮（PCAマップの頑健性チェック用・uwot が必要）}
+\title{Compute two-dimensional display coordinates by UMAP}
 \usage{
 umap_2d(mat, n_neighbors = NULL, seed = 2026)
 }
+\arguments{
+\item{mat}{A numeric matrix with one row per text, as returned by
+\code{\link{embed}}. Row names are used as point labels.}
+
+\item{n_neighbors}{Integer; the size of the local neighbourhood UMAP uses.
+Defaults to \code{NULL}, which uses \code{max(2, min(15, nrow(mat) - 1))}.}
+
+\item{seed}{Integer; the random seed. UMAP is stochastic, so fixing the
+seed is what makes the map reproducible. Defaults to 2026.}
+}
+\value{
+A list with \code{df}, a data frame with columns \code{PC1},
+  \code{PC2} and \code{label}, and \code{ve}, which is \code{c(NA, NA)}
+  because UMAP has no variance-explained quantity. The coordinate columns
+  are named \code{PC1}/\code{PC2} so that the result can be passed directly
+  to \code{\link{plot_embedding_2d}}.
+}
 \description{
-UMAP で2次元に圧縮（PCAマップの頑健性チェック用・uwot が必要）
+Re-derives the map with UMAP as a robustness check on the layout returned by
+\code{\link{coords_2d}}, in the same role as \code{\link{tsne_2d}}. Requires
+the \pkg{uwot} package.
+}
+\seealso{
+\code{\link{coords_2d}} for the default layout, and
+  \code{\link{tsne_2d}} for the other robustness check.
 }

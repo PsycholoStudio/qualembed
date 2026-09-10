@@ -2,7 +2,7 @@
 % Please edit documentation in R/stats-viz.R
 \name{plot_recurrence}
 \alias{plot_recurrence}
-\title{概念再帰プロット（Angus et al., 2012）}
+\title{Plot conceptual recurrence for one document}
 \usage{
 plot_recurrence(
   emb,
@@ -14,39 +14,66 @@ plot_recurrence(
 )
 }
 \arguments{
-\item{emb}{セグメントの埋め込み行列}
+\item{emb}{A numeric matrix of segment embeddings, one row per segment;
+rows are matched to the table by \code{docname} where possible, otherwise
+by position.}
 
-\item{seg}{as_segments() の契約を満たす表}
+\item{seg}{A segment table satisfying the \code{\link{as_segments}}
+contract.}
 
-\item{doc}{描く文書。複数ある場合は必須。}
+\item{doc}{Character; which document to draw. Required when the table
+holds more than one, since a recurrence plot is a within-document
+object; the function stops rather than pooling documents. Defaults to
+\code{NULL}.}
 
-\item{anchor}{色の基準。"quantile"（既定）は非対角セルの分位で
-両端を決める。商用APIのコサインは0.6〜0.95の狭い帯に集まるため、
-0〜1 で塗ると図が一色になる。"range" は実測の最小最大。}
+\item{anchor}{Character; how the colour scale is anchored.
+\code{"quantile"} takes the two ends from quantiles of the off-diagonal
+cells; commercial APIs return cosines packed into a narrow band whose
+position differs by provider, so a scale running from 0 to 1 paints the
+whole plot one colour. \code{"range"} uses the observed minimum and maximum instead.
+Defaults to \code{"quantile"}.}
 
-\item{probs}{anchor = "quantile" のときの下側・上側確率}
+\item{probs}{A numeric vector of length 2 giving the lower and upper
+probabilities used when \code{anchor = "quantile"}. Defaults to
+\code{c(.02, .98)}.}
 
-\item{title}{図題}
+\item{title}{Character; the plot title. Defaults to \code{NULL}, which
+prints \code{"Conceptual recurrence:"} followed by the document name.}
 }
 \value{
-ggplot（表示もする）
+A \pkg{ggplot2} object (printed when called at the top level): a
+  raster of the n by n similarity matrix on a blue-white-red scale centered at the
+  median off-diagonal similarity, with every segment numbered on both axes
+  so that cells can be traced back to the text, and a fixed 1:1 aspect
+  ratio. Documents with fewer than three segments raise an error.
 }
 \description{
-**分割した文書に対して最初に見るべき図である。** セル (i, j) は**全次元**の
-埋め込み同士のコサイン類似度である。次元削減は一切なく、両軸はセグメントの
-位置にすぎない。2次元投影が距離を歪めるという問題 (Chari & Pachter, 2023)
-をそもそも踏まない。plot_trajectory() と違い、読むときに幾何の但し書きが
-要らない。閾値は掛けない（Angus に倣い、Eckmann/Marwan の二値化はしない）。
+Displays the full segment-by-segment cosine similarity matrix of a single
+document (Angus et al., 2012). \strong{This is the first display to reach
+for once a document has been segmented.} Cell (i, j) is the cosine
+similarity between two segment embeddings computed in \emph{all}
+dimensions: there is no dimension reduction anywhere, and both axes carry
+nothing but segment position, so the distortion a two-dimensional
+projection introduces (Chari and Pachter, 2023) never arises. Unlike
+\code{\link{plot_trajectory}}, nothing here has to be read with a geometric
+caveat attached. No threshold is applied, following Angus rather than the
+Eckmann/Marwan binarisation.
 }
-\details{
-目で拾った構造は trajectory_null() に掛けること。手元の材料では、この図が
-見せる話題の**転換**は段の順序の並べ替えに耐えたが、**回帰**は耐えなかった。
-どちらを論文に書くかを決める前に知っておくべき差である。
+\section{Reading the plot}{
 
-読み方: 対角付近のまとまり = 一つの話題が続く区間。対角から離れた
-まとまり = 前の話題への回帰。明るい縦筋 = その後ずっと参照され続ける
-早い時点の一節。暗い領域 = 新しい話。
+Blocks along the diagonal are stretches that stay on one topic. Blocks
+away from the diagonal are returns to earlier material. A bright vertical
+stripe is an early passage that everything afterwards keeps referring back
+to. Dark regions are new material.
+
+Structure picked out by eye should then be tested with
+\code{\link{trajectory_null}}. A display can make shifts and returns
+equally visible while only one of them survives reordering of the
+segments, a difference worth knowing before deciding
+which of the two to write up.
 }
+
 \seealso{
-[trajectory_null()], [plot_arc()], [recurrence_stats()]
+\code{\link{trajectory_null}}, \code{\link{plot_arc}},
+  \code{\link{recurrence_stats}}
 }

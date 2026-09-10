@@ -46,21 +46,30 @@
   openai = "text-embedding-3-small"
 )
 
-#' Where `embed()` keeps its cache
+#' Locate the cache file that \code{embed()} uses
 #'
-#' Returns the path of the RDS file that [embed()] reads and writes for a given
-#' provider, model and set of request options. Request options that change the
-#' returned vector (Gemini's `task_type`, Voyage's `input_type`, an explicit
-#' output dimensionality) are part of the file name, so one provider can hold
-#' several caches at once. Use this rather than assembling the name yourself:
-#' a script that guessed `"<provider>_<model>.rds"` silently missed the Gemini
-#' cache, which carries a task-type suffix, and skipped the cells that needed it.
+#' Returns the path of the RDS file that \code{\link{embed}} reads and writes
+#' for a given provider, model and set of request options. Request options that
+#' change the returned vector (Gemini's \code{task_type}, Voyage's
+#' \code{input_type}, an explicit output dimensionality) are part of the file
+#' name, so one provider can hold several caches at once. Use this rather than
+#' assembling the name yourself: a script that guessed
+#' \code{"<provider>_<model>.rds"} silently missed the Gemini cache, which
+#' carries a task-type suffix, and skipped the cells that needed it.
 #'
-#' @param provider One of `"gemini"`, `"openai"`, `"voyage"`.
-#' @param model Model identifier; the provider default when `NULL`.
-#' @param cache_dir Directory holding the cache files.
-#' @param ... Request options, as passed to [embed()].
-#' @return A file path. The file need not exist.
+#' @param provider Character; one of \code{"gemini"}, \code{"openai"},
+#'   \code{"voyage"}.
+#' @param model Character; the model identifier. Defaults to \code{NULL},
+#'   which uses the provider default.
+#' @param cache_dir Character; the directory holding the cache files. Defaults
+#'   to \code{file.path("output", "embed_cache")}, which is relative to the
+#'   working directory, so a session started elsewhere will not find an
+#'   existing cache.
+#' @param ... Request options, as passed to \code{\link{embed}}.
+#' @return A file path, as a length-one character vector. The file need not
+#'   exist.
+#' @seealso \code{\link{embed}}, whose cache this names, and
+#'   \code{\link{cache_info}} for what the cache currently holds.
 #' @export
 cache_path <- function(provider, model = NULL,
                        cache_dir = file.path("output", "embed_cache"), ...) {
@@ -193,16 +202,26 @@ cache_path <- function(provider, model = NULL,
 #' API failures are reported in plain language, and partial results are written
 #' to the cache after every batch, so an interrupted run loses nothing.
 #'
-#' @param texts Character vector of texts to embed. A named vector's names
+#' @param texts A character vector of texts to embed. A named vector's names
 #'   become the row names of the result.
-#' @param provider One of \code{"gemini"}, \code{"voyage"}, \code{"openai"}.
-#' @param model Model name; \code{NULL} uses the provider default.
-#' @param api_key API key; \code{NULL} reads the environment variable
+#' @param provider Character; one of \code{"gemini"}, \code{"voyage"},
+#'   \code{"openai"}. Defaults to \code{"gemini"}.
+#' @param model Character; the model name. Defaults to \code{NULL}, which uses
+#'   the provider default.
+#' @param api_key Character; the API key. Defaults to \code{NULL}, which reads
+#'   the environment variable
 #'   (\code{GEMINI_API_KEY}, \code{VOYAGE_API_KEY}, \code{OPENAI_API_KEY}),
 #'   normally stored in \code{~/.Renviron}.
-#' @param cache Reuse and store previously fetched embeddings (default TRUE).
+#' @param cache Logical; whether to reuse and store previously fetched
+#'   embeddings. Defaults to \code{TRUE}.
 #'   One RDS file per provider, model, and set of vector-changing request
 #'   options; within a file, one entry per text.
+#'
+#'   \strong{The cache stores your texts verbatim and unencrypted.} For
+#'   participant data that makes a second plaintext copy on disk, which the
+#'   study's data-management plan has to account for: pass
+#'   \code{cache = FALSE}, or set \code{cache_dir} to a controlled-access
+#'   location.
 #'
 #'   The cache key is built from the \emph{resolved} options, not from the
 #'   arguments the caller typed. \code{embed(x, provider = "gemini")} and
@@ -218,14 +237,20 @@ cache_path <- function(provider, model = NULL,
 #'   A consequence worth knowing when you rerun someone's code: with
 #'   \code{cache = TRUE} you get their cache, not the endpoint. Delete the
 #'   file, or pass \code{refresh = TRUE}, to reach the API.
-#' @param refresh Ignore cached entries and fetch again, overwriting them
-#'   (default FALSE). Useful after a provider updates a model.
-#' @param cache_dir Directory holding the cache files.
-#' @param progress Show per-batch progress for large jobs (default TRUE).
-#' @param rpm Cap requests per minute. Use on free tiers to stay under a rate
-#'   limit instead of relying on retry-after-failure.
-#' @param dry_run Report how many texts would be fetched and return without
-#'   calling the API.
+#' @param refresh Logical; whether to ignore cached entries and fetch again,
+#'   overwriting them. Useful after a provider updates a model. Defaults to
+#'   \code{FALSE}.
+#' @param cache_dir Character; the directory holding the cache files. Defaults
+#'   to \code{file.path("output", "embed_cache")}, which is relative to the
+#'   working directory, so a session started elsewhere will not find an
+#'   existing cache.
+#' @param progress Logical; whether to show per-batch progress for large jobs.
+#'   Defaults to \code{TRUE}.
+#' @param rpm Numeric; a cap on requests per minute. Use on free tiers to stay
+#'   under a rate limit instead of relying on retry-after-failure. Defaults to
+#'   \code{NULL} (no cap).
+#' @param dry_run Logical; whether to report how many texts would be fetched
+#'   and return without calling the API. Defaults to \code{FALSE}.
 #' @param ... Provider-specific options: \code{batch}, \code{dims}
 #'   (output dimensionality), \code{task_type} (Gemini), \code{input_type}
 #'   (Voyage). Options that change the returned vectors are given their own
@@ -261,8 +286,8 @@ cache_path <- function(provider, model = NULL,
 #'   call --- \code{request_options}, \code{fetch_dates}, \code{software}, and
 #'   \code{request_batches}, a fingerprint of which texts travelled in the same
 #'   request (the returned vector for a text depends on what accompanied it, and
-#'   no provider exposes that as a named option). \code{embedding_info()} prints
-#'   the set. With \code{dry_run = TRUE}, an invisible list of counts.
+#'   no provider exposes that as a named option). \code{\link{embedding_info}}
+#'   prints the set. With \code{dry_run = TRUE}, an invisible list of counts.
 #'
 #' @section Why the matrix carries its own texts:
 #' Row names are whatever you asked for. If you call
@@ -280,9 +305,9 @@ cache_path <- function(provider, model = NULL,
 #' attributes(emb)[c("provider", "model", "access_date")]
 #' }
 #'
-#' \code{save_embeddings()} warns if you archive a matrix without it, and
-#' \code{seed_cache_from_archive.R} uses it to rebuild a cache from archived
-#' matrices alone --- so a reader who has your archive never needs an API key
+#' \code{\link{save_embeddings}} warns if you archive a matrix without it, and
+#' the archive-seeding script distributed with the paper uses it to rebuild a
+#' cache from archived matrices alone --- so a reader who has your archive never needs an API key
 #' to reproduce the analysis. Subsetting a matrix drops the attribute (this is
 #' how R works); embed once and subset afterwards, or re-attach it yourself.
 #' @examples
@@ -296,6 +321,13 @@ cache_path <- function(provider, model = NULL,
 #' # Free tier: pace requests instead of hitting the limit
 #' emb <- embed(my_responses, provider = "gemini", rpm = 60)
 #' }
+#' @seealso \code{\link{check_api}} to confirm a key before a long run;
+#'   \code{\link{cos_sim_matrix}} and \code{\link{semantic_projection}} for
+#'   what to do with the matrix; \code{\link{embedding_info}} to report what a
+#'   matrix was measured with, \code{\link{save_embeddings}} to archive it,
+#'   and \code{\link{cache_info}} and \code{\link{cache_path}} for the
+#'   cache. What to record when you report a matrix:
+#'   \url{https://github.com/PsycholoStudio/qualembed/blob/main/docs/provenance.md}.
 #' @export
 embed <- function(texts,
                   provider  = "gemini",
@@ -537,18 +569,24 @@ embed <- function(texts,
 #' Prints what a method section needs in order to identify the measurement:
 #' the provider and model, the embedding dimensionality, every request option
 #' including the ones left at their defaults, when the vectors were fetched,
-#' and the software that fetched them. Returns the same fields as a one-row
-#' data frame, invisibly, so they can be written to a results file.
+#' and the software that fetched them. Returns those fields as a one-row
+#' data frame, invisibly, so they can be written to a results file; the
+#' per-request batch sizes are printed but not returned.
 #'
 #' Commercial embedding models are versioned products that are retired on the
 #' provider's schedule. A matrix that records only its numbers cannot be
 #' matched to the instrument that produced it once that instrument is gone,
-#' which is why \code{embed()} attaches these attributes and why archived
+#' which is why \code{\link{embed}} attaches these attributes and why archived
 #' matrices carry them.
 #'
-#' @param x A matrix returned by \code{embed()}, or a list of such matrices
-#'   (as \code{save_embeddings()} archives them).
-#' @return A one-row data frame per matrix, invisibly.
+#' @param x A matrix returned by \code{\link{embed}}, or a list of such
+#'   matrices (as \code{\link{save_embeddings}} archives them).
+#' @return A one-row data frame per matrix, invisibly, with the provider, the
+#'   model, the embedding dimensionality, the request options, the access date
+#'   and the software that fetched the vectors.
+#' @seealso \code{\link{embed}}, which attaches these attributes, and
+#'   \code{\link{save_embeddings}}, which archives them. What each field is
+#'   for: \url{https://github.com/PsycholoStudio/qualembed/blob/main/docs/provenance.md}.
 #' @export
 #' @examples
 #' \dontrun{
@@ -559,7 +597,7 @@ embed <- function(texts,
 embedding_info <- function(x) {
   if (is.list(x) && !is.matrix(x)) {
     out <- do.call(rbind, lapply(seq_along(x), function(i) {
-      cat(if (i > 1) "\n" else "", "── ", names(x)[i] %||% i, "\n", sep = "")
+      cat(if (i > 1) "\n" else "", "\u2500\u2500 ", names(x)[i] %||% i, "\n", sep = "")
       embedding_info(x[[i]])
     }))
     return(invisible(out))
@@ -784,22 +822,44 @@ embedding_info <- function(x) {
 
 # ── キャッシュの検査・管理 ──────────────────────────────────
 
-#' キャッシュの中身を一覧する
-#' @param cache_dir キャッシュディレクトリ
-#' @return provider / model / n_texts / dims / size_mb のデータフレーム
 #' Inspect the embedding cache
 #'
-#' @param cache_dir Directory holding the cache files.
-#' @return A data frame of provider, model, number of cached texts,
-#'   dimensionality and file size.
+#' @description
+#' Lists what the on-disk embedding cache currently holds, one row per cache
+#' file. A provider has more than one file when it was called with different
+#' vector-changing request options, since those are part of the file name. Use it to confirm that a run will be served from
+#' the cache rather than from the API, and to see how much disk the cache
+#' occupies.
+#'
+#' @param cache_dir Character; the directory holding the cache files. Defaults
+#'   to \code{file.path("output", "embed_cache")}, which is relative to the
+#'   working directory, so a session started elsewhere will not find an
+#'   existing cache.
+#' @return A data frame with one row per cache file and columns
+#'   \code{provider}, \code{model} (the model identifier, with any
+#'   vector-changing request options appended as they appear in the file name),
+#'   \code{n_texts}, \code{dims} (embedding dimensionality), \code{size_mb} and
+#'   \code{file}. The directory that was read is printed as a message and
+#'   attached as the attribute \code{cache_dir}, so that an empty result can
+#'   be told apart from a session looking in the wrong place. When the
+#'   directory holds no cache, an empty data frame is returned invisibly with
+#'   the same attribute.
+#' @seealso \code{\link{cache_clear}} to delete cache files, and
+#'   \code{\link{cache_path}} for the name of a single cache file.
 #' @export
 cache_info <- function(cache_dir = file.path("output", "embed_cache")) {
+  # 既定は作業ディレクトリからの相対パスなので、どこを見たのかを必ず示す。
+  # そうしないと、セッションを別の場所で始めた利用者は、空の結果を
+  # 「キャッシュが無い」と読んでしまう（実際には見る場所が違う）。
+  where <- normalizePath(cache_dir, mustWork = FALSE)
   files <- list.files(cache_dir, pattern = "[.]rds$", full.names = TRUE)
   if (length(files) == 0) {
-    message("No embedding cache found in ", cache_dir)
-    return(invisible(data.frame()))
+    message("No embedding cache in ", where)
+    out <- data.frame()
+    attr(out, "cache_dir") <- where
+    return(invisible(out))
   }
-  do.call(rbind, lapply(files, function(f) {
+  out <- do.call(rbind, lapply(files, function(f) {
     x <- readRDS(f)
     key <- sub("[.]rds$", "", basename(f))
     data.frame(provider = sub("_.*$", "", key),
@@ -807,18 +867,34 @@ cache_info <- function(cache_dir = file.path("output", "embed_cache")) {
                n_texts  = length(x),
                dims     = if (length(x)) length(x[[1]]) else NA_integer_,
                size_mb  = round(file.size(f) / 1024^2, 1),
+               file     = basename(f),
                row.names = NULL)
   }))
+  attr(out, "cache_dir") <- where
+  message(nrow(out), " cache file", if (nrow(out) != 1) "s" else "",
+          " in ", where)
+  out
 }
 
-#' キャッシュを削除する（provider/model を指定しなければ全消去）
-#' @param provider 消去対象のプロバイダ（NULL で全部）
-#' @param cache_dir キャッシュディレクトリ
 #' Delete cached embeddings
 #'
-#' @param provider Provider to clear; \code{NULL} clears everything.
-#' @param cache_dir Directory holding the cache files.
-#' @return Invisibly, the number of files removed.
+#' @description
+#' Removes files from the embedding cache directory. Texts already in the
+#' cache are never re-fetched, so clear it when a provider has changed the
+#' model behind a fixed name, or when the cache is to be rebuilt from
+#' scratch. Clearing costs API calls on the next run.
+#'
+#' @param provider Character; the provider whose cache files are removed, for
+#'   example \code{"gemini"}. Defaults to \code{NULL}, which removes every
+#'   cache file in the directory.
+#' @param cache_dir Character; the directory holding the cache files. Defaults
+#'   to \code{file.path("output", "embed_cache")}, which is relative to the
+#'   working directory, so a session started elsewhere will not find an
+#'   existing cache.
+#' @return Invisibly, the number of files removed. A message reports the
+#'   count, or states that there was nothing to clear.
+#' @seealso \code{\link{cache_info}} to inspect the cache before clearing it,
+#'   and \code{\link{cache_path}} for the name of a single cache file.
 #' @export
 cache_clear <- function(provider = NULL,
                         cache_dir = file.path("output", "embed_cache")) {
@@ -833,18 +909,27 @@ cache_clear <- function(provider = NULL,
 # ── 簡易動作確認 ────────────────────────────────────────────
 # 分析・可視化ユーティリティは utils.R に分離しています。
 
-#' Quick API connectivity check
+#' Check that an embedding API is reachable
 #'
-#' Embeds a single test sentence and prints the model and dimensionality.
-#' @param provider One of \code{"gemini"}, \code{"voyage"}, \code{"openai"}.
+#' Embeds a single test sentence and prints the provider, the model, the
+#' embedding dimensionality and the first five components, so that a key and an
+#' endpoint can be confirmed before a long run is started.
+#'
+#' @param provider Character; one of \code{"gemini"}, \code{"voyage"},
+#'   \code{"openai"}. Defaults to \code{"gemini"}.
 #' @param ... Passed to \code{\link{embed}}.
+#' @return The one-row embedding matrix returned by \code{\link{embed}},
+#'   invisibly, carrying the usual \code{provider}, \code{model} and
+#'   \code{access_date} attributes.
+#' @seealso \code{\link{embed}} for the call this wraps, and
+#'   \code{\link{embedding_info}} for the full provenance of a matrix.
 #' @export
 check_api <- function(provider = "gemini", ...) {
-  cat("API接続テスト:", provider, "\n")
+  cat("API connection test:", provider, "\n")
   test <- embed("This is a test.", provider = provider, ...)
-  cat("  モデル:", attr(test, "model"), "\n")
-  cat("  次元数:", ncol(test), "\n")
-  cat("  最初の5成分:", round(test[1, 1:5], 4), "\n")
+  cat("  model:", attr(test, "model"), "\n")
+  cat("  dimensions:", ncol(test), "\n")
+  cat("  first 5 components:", round(test[1, 1:5], 4), "\n")
   cat("  OK\n")
   invisible(test)
 }

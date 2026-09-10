@@ -2,14 +2,26 @@
 % Please edit documentation in R/stats-viz.R
 \name{pca_coords}
 \alias{pca_coords}
-\title{旧名（後方互換）。既定の標準化も pca_2d に合わせて FALSE に変更した。}
+\title{Compute two-dimensional display coordinates by PCA (former name of pca_2d)}
 \usage{
 pca_coords(mat, scale = FALSE)
+}
+\arguments{
+\item{mat}{A numeric matrix with one row per text, as returned by
+\code{\link{embed}}.}
 
-pca_coords(mat, scale = FALSE)
+\item{scale}{Logical; whether to standardise each embedding dimension before
+the decomposition. Defaults to \code{FALSE}.}
+}
+\value{
+The same list as \code{\link{pca_2d}}.
 }
 \description{
-旧名（後方互換）。既定の標準化も pca_2d に合わせて FALSE に変更した。
-
-旧名（後方互換）。既定の標準化も pca_2d に合わせて FALSE に変更した。
+Alias for \code{\link{pca_2d}}, retained for scripts written against the
+earlier API. Note that \code{scale} now defaults to \code{FALSE} here too, so
+this name no longer standardises the embedding dimensions by default.
+}
+\seealso{
+\code{\link{pca_2d}}, which this aliases, and
+  \code{\link{coords_2d}} for new code.
 }

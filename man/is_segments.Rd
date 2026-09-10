@@ -2,13 +2,24 @@
 % Please edit documentation in R/stats-viz.R
 \name{is_segments}
 \alias{is_segments}
-\title{契約を満たしているか}
+\title{Test whether an object is a segment table}
 \usage{
 is_segments(x)
 }
 \arguments{
-\item{x}{任意のオブジェクト}
+\item{x}{Any object.}
+}
+\value{
+A length-one logical.
 }
 \description{
-契約を満たしているか
+Returns \code{TRUE} when \code{x} is a \code{qe_segments} object, that is,
+the standardised segment table returned by \code{\link{as_segments}},
+\code{\link{segment_text}} or \code{\link{read_segments}}. Use it to guard
+code that assumes the \code{doc_id}/\code{segid}/\code{text} columns are
+present.
+}
+\seealso{
+\code{\link{as_segments}}, \code{\link{segment_text}} and
+  \code{\link{read_segments}}, which produce the tested class.
 }

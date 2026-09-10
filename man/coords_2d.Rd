@@ -2,35 +2,69 @@
 % Please edit documentation in R/stats-viz.R
 \name{coords_2d}
 \alias{coords_2d}
-\title{表示用の2次元座標}
+\title{Compute two-dimensional display coordinates for an embedding matrix}
 \usage{
 coords_2d(mat, layout = c("mds", "pca"), axis = NULL, scale = FALSE)
 }
 \arguments{
-\item{mat}{embedding行列 (n × d)}
+\item{mat}{A numeric matrix with one row per text (n items) and one column
+per embedding dimension (d), as returned by \code{\link{embed}}. Row names
+are carried through as point labels.}
 
-\item{layout}{"mds"（既定）/ "pca"}
+\item{layout}{Character; either \code{"mds"} (non-metric MDS via
+\code{MASS::isoMDS}) or \code{"pca"}. MDS falls back to PCA when there are
+fewer than four rows, when \pkg{MASS} is not installed, or when the
+distances are degenerate; the layout actually used is reported in the
+result. Defaults to \code{"mds"}.}
 
-\item{axis}{事前指定の方向。渡すと x 軸がその方向に最も沿う向きへ回す。
-回転は距離を変えないので、忠実さはそのままで軸だけが解釈可能になる。}
+\item{axis}{An optional numeric vector of length d giving a pre-specified
+direction in the embedding space, for instance the difference between the
+centroids of two anchor sets (the axis \code{\link{semantic_projection}}
+scores texts on, not the scores it returns). When supplied, the
+configuration is
+rotated so that the x axis lies as close as possible to that direction.
+Rotation leaves distances unchanged, so fidelity is unaffected and only
+the axis becomes interpretable. Defaults to \code{NULL} (no rotation).}
 
-\item{scale}{layout = "pca" のとき各次元を標準化（既定 FALSE = Method と一致）}
+\item{scale}{Logical; whether to standardise each embedding dimension before
+the decomposition, which applies only when \code{layout = "pca"}. Defaults
+to \code{FALSE}: standardising gives every embedding dimension the same
+weight, which alters the space rather than the display of it.}
 }
 \value{
-list(df = 座標データフレーム(PC1, PC2, label), ve = 分散説明率[2]
-  （MDS では NA）, layout = 使った配置, lab = 軸ラベル[2]）
+A list with four elements: \code{df}, a data frame of coordinates
+  with columns \code{PC1}, \code{PC2} and \code{label} (the column names are
+  kept for backward compatibility whichever layout is used); \code{ve}, the
+  percentage of variance explained by each of the two components, or
+  \code{c(NA, NA)} under MDS; \code{layout}, the layout actually used
+  (\code{"mds"} or \code{"pca"}); and \code{lab}, a length-2 character
+  vector of axis labels for the plot.
 }
 \description{
-既定は非計量MDS。PCA は分散を最大化するので、次元数が点数を大きく超える
-埋め込みでは第2成分までに乗る分散が少なく、平面が点を潰す。距離の順位を
-目的関数にする MDS のほうが、同じ2次元でも元の遠近をよく保つ
-（実測: 6材料 × 3プロバイダの18セルすべてで MDS が上回った）。
+Reduces an embedding matrix to a plane for plotting. The default layout is
+non-metric multidimensional scaling (MDS), which takes the rank order of
+distances as its loss function; \code{layout = "pca"} gives the metric
+alternative. Use this to produce the coordinates that
+\code{\link{plot_embedding_2d}} and \code{\link{plot_bilingual}} draw.
 }
 \details{
-**選択は「PCA か MDS か」ではない。** ユークリッド距離に対しては古典的
-（計量）MDS と PCA は同一の配置である（数値精度まで一致する）。選ぶのは
-計量か非計量かであり、規則は「下流が読むものに縮約の目的関数を合わせる」
-の一つで済む。図は距離の**順位**で読まれるので非計量、Procrustes m2 は
-相似変換後の二乗距離という**計量**の基準なので計量（= PCA）。
-procrustes_m2() の既定が PCA のままなのはそのためである。
+The choice is not "PCA or MDS". For Euclidean distances, classical (metric)
+MDS and PCA return the same configuration, agreeing to numerical precision.
+What is being chosen is metric versus non-metric, and a single rule settles
+it: match the loss function of the reduction to what the downstream reader
+uses. A scatter plot is read as the rank order of distances, so displays use
+non-metric MDS; Procrustes m2 is a metric criterion (squared distance after
+a similarity transform), which is why \code{\link{procrustes_m2}} keeps PCA
+as its default.
+
+PCA maximises variance rather than preserving distances, so when the
+embedding dimensionality far exceeds the number of points, little variance
+reaches the first two components and the plane flattens the configuration.
+\code{\link{trajectory_fidelity}} reports, for your own data, how well the
+plotted distances track the measured ones.
+}
+\seealso{
+\code{\link{plot_embedding_2d}} to draw the result, and
+  \code{\link{pca_2d}}, \code{\link{tsne_2d}} and \code{\link{umap_2d}} for
+  the other reductions.
 }

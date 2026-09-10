@@ -2,18 +2,31 @@
 % Please edit documentation in R/embed.R
 \name{cache_clear}
 \alias{cache_clear}
-\title{キャッシュを削除する（provider/model を指定しなければ全消去）}
+\title{Delete cached embeddings}
 \usage{
 cache_clear(provider = NULL, cache_dir = file.path("output", "embed_cache"))
 }
 \arguments{
-\item{provider}{Provider to clear; \code{NULL} clears everything.}
+\item{provider}{Character; the provider whose cache files are removed, for
+example \code{"gemini"}. Defaults to \code{NULL}, which removes every
+cache file in the directory.}
 
-\item{cache_dir}{Directory holding the cache files.}
+\item{cache_dir}{Character; the directory holding the cache files. Defaults
+to \code{file.path("output", "embed_cache")}, which is relative to the
+working directory, so a session started elsewhere will not find an
+existing cache.}
 }
 \value{
-Invisibly, the number of files removed.
+Invisibly, the number of files removed. A message reports the
+  count, or states that there was nothing to clear.
 }
 \description{
-キャッシュを削除する（provider/model を指定しなければ全消去）
+Removes files from the embedding cache directory. Texts already in the
+cache are never re-fetched, so clear it when a provider has changed the
+model behind a fixed name, or when the cache is to be rebuilt from
+scratch. Clearing costs API calls on the next run.
+}
+\seealso{
+\code{\link{cache_info}} to inspect the cache before clearing it,
+  and \code{\link{cache_path}} for the name of a single cache file.
 }

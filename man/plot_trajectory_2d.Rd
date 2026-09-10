@@ -2,17 +2,25 @@
 % Please edit documentation in R/stats-viz.R
 \name{plot_trajectory_2d}
 \alias{plot_trajectory_2d}
-\title{2次元投影上のセグメント配置（非推奨。plot_trajectory() を使うこと）}
+\title{Plot segments on a two-dimensional projection (deprecated)}
 \usage{
 plot_trajectory_2d(emb, seg, line = TRUE, label = TRUE, title = NULL)
 }
 \arguments{
-\item{emb, seg, line, label, title}{旧引数}
+\item{emb, seg, line, label, title}{Arguments of the old interface. They are
+passed straight to \code{\link{plot_trajectory}}, where \code{line} becomes
+\code{arrows}.}
+}
+\value{
+The \pkg{ggplot2} object returned by
+  \code{\link{plot_trajectory}}.
 }
 \description{
-plot_trajectory() に置き換えられた。新関数は矢印で順序を示し、射影が
-どれだけ距離を保っているかを副題に出す。
+Deprecated: use \code{\link{plot_trajectory}} instead. The replacement marks
+the narrative order with an arrow on every step and prints in the subtitle
+how much of the distance structure the projection preserves. This function
+is now a thin wrapper kept for backward compatibility.
 }
 \seealso{
-[plot_trajectory()]
+\code{\link{plot_trajectory}}
 }

@@ -2,24 +2,44 @@
 % Please edit documentation in R/stats-viz.R
 \name{procrustes_m2}
 \alias{procrustes_m2}
-\title{Procrustes 一致度 m² + PROTEST（vegan; Gower, 1975; Jackson, 1995）
-次元数の異なる空間を比較するため、各空間の最初の k 主成分に
-射影してから対称 Procrustes を実行する（Method: 既定 k = 5）}
+\title{Compare two spaces by Procrustes fit with a PROTEST permutation test}
 \usage{
 procrustes_m2(X, Y, k = 5, n_perm = 9999, layout = c("pca", "mds"))
 }
 \arguments{
-\item{X, }{Y    同じ n 項目の embedding 行列（行の対応が取れていること）}
+\item{X}{A numeric embedding matrix for n items.}
 
-\item{k}{比較に使う主成分数}
+\item{Y}{A second embedding matrix for the same n items in the same row
+order; its number of columns may differ from that of \code{X}.}
 
-\item{n_perm}{PROTEST の並べ替え回数（0 で PROTEST をスキップ）}
+\item{k}{Integer; the number of dimensions retained before the fit.
+Defaults to 5 and is capped at \code{min(ncol(X), ncol(Y), nrow(X) - 1)}.}
+
+\item{n_perm}{Integer; the number of PROTEST permutations. Defaults to
+9999; set to 0 to skip the test, in which case \code{p} is \code{NA}.}
+
+\item{layout}{Character; how the k coordinates are formed, either
+\code{"pca"} (the metric reduction fixed in the Method of the accompanying
+paper) or \code{"mds"}. Defaults to \code{"pca"}.}
 }
 \value{
-list(m2, corr = sqrt(1-m2), p, residuals（項目別・降順）, k, n_perm)
+A list with \code{m2} (the Procrustes residual sum of squares, 0
+  for perfect agreement and 1 for none), \code{corr}
+  (\code{sqrt(1 - m2)}), \code{p} (the PROTEST p value, or \code{NA} when
+  \code{n_perm = 0}), \code{residuals} (the per-item residuals in
+  decreasing order, named after the rows of \code{X}, which identify the
+  items that fit worst), \code{k}, \code{n_perm} and \code{layout}.
 }
 \description{
-Procrustes 一致度 m² + PROTEST（vegan; Gower, 1975; Jackson, 1995）
-次元数の異なる空間を比較するため、各空間の最初の k 主成分に
-射影してから対称 Procrustes を実行する（Method: 既定 k = 5）
+Compares the configuration of the same items in two embedding spaces. The
+spaces may have different dimensionalities, so each is first reduced to
+\code{k} coordinates; a symmetric Procrustes fit then returns the residual
+sum of squares \eqn{m^2} (Gower, 1975), and PROTEST supplies a permutation
+p value (Jackson, 1995). Reported as supplementary, descriptive evidence
+alongside \code{\link{mantel_test}}, without any pass-or-fail threshold.
+}
+\seealso{
+\code{\link{mantel_test}}, the primary statistic for cross-space
+  agreement, and \code{\link{procrustes_sensitivity}} for the fit across a
+  range of \code{k}.
 }

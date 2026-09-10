@@ -12,14 +12,17 @@ save_embeddings(
 )
 }
 \arguments{
-\item{emb_list}{Named list of matrices from \code{embed()} (a bare matrix is
-accepted and named after \code{name}).}
+\item{emb_list}{A named list of matrices from \code{\link{embed}} (a bare
+matrix is accepted and named after \code{name}).}
 
-\item{name}{Analysis name; becomes part of the file name.}
+\item{name}{Character; the analysis name, which becomes part of the file
+name.}
 
-\item{provider}{Provider name; becomes part of the file name.}
+\item{provider}{Character; the embedding provider name, which becomes part
+of the file name.}
 
-\item{dir}{Output directory.}
+\item{dir}{Character; the output directory, created recursively if missing.
+Defaults to \code{file.path("output", "embeddings")}.}
 }
 \value{
 The path written, invisibly.
@@ -28,11 +31,13 @@ The path written, invisibly.
 Reproducibility rests on these matrices rather than on re-fetching from the
 API, so the archive has to record what was embedded. It warns in the two
 cases where it would not: a matrix that has lost the \code{texts} attribute
-\code{embed()} attaches (subsetting drops it), and two matrices sharing a
-name (name-based lookup would return only the first, leaving the other
+\code{\link{embed}} attaches (subsetting drops it), and two matrices sharing
+a name (name-based lookup would return only the first, leaving the other
 unreachable). Both failures are silent otherwise, and both make the archive
 impossible to trace back to its inputs.
 }
 \seealso{
-\code{embed()} for the \code{texts} attribute this relies on.
+\code{\link{embed}} for the \code{texts} attribute this relies on,
+  \code{\link{embedding_info}} to read the provenance back, and
+  \code{\link{write_stats}} for the accompanying statistics.
 }

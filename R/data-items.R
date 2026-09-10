@@ -23,11 +23,22 @@
 # 戻り値: list(en, ja, factor, factor_labels, reversed)
 #' Big Five item texts (English, from psych::bfi.dictionary)
 #'
-#' @format See the source for structure.
+#' @return A list of five: \code{$en}, a named character vector of the
+#'   twenty-five item texts (names are the \pkg{psych} item codes A1, A2, ...);
+#'   \code{$ja}, \code{NULL}; \code{$factor}, the factor each item belongs to;
+#'   \code{$factor_labels}, the five factor names; and \code{$reversed}, the
+#'   codes of the seven reverse-keyed items.
+#' @examples
+#' if (requireNamespace("psych", quietly = TRUE)) {
+#'   b <- get_bfi_items()
+#'   str(b, max.level = 1)
+#'   head(b$en, 3)       # the texts to embed
+#'   table(b$factor)     # the grouping to test against
+#' }
 #' @export
 get_bfi_items <- function() {
   if (!requireNamespace("psych", quietly = TRUE))
-    stop("psych パッケージが必要です: install.packages('psych')")
+    stop("the psych package is required: install.packages('psych')")
 
   dict <- psych::bfi.dictionary[1:25, ]
   items_en <- setNames(as.character(dict$Item), rownames(dict))
@@ -50,7 +61,9 @@ get_bfi_items <- function() {
 # ── PANAS 20項目（Watson, Clark, & Tellegen, 1988）─────────
 #' PANAS item texts (EN original; JA = validated Japanese scale) and affect labels
 #'
-#' @format See the source for structure.
+#' @format A list of three: \code{$en} and \code{$ja}, each a named character
+#'   vector of the twenty terms (PA01-PA10, NA01-NA10), and \code{$affect}, a
+#'   character vector marking each term positive or negative.
 #' @export
 panas_items <- list(
   en = c(
@@ -83,29 +96,30 @@ panas_items$affect <- ifelse(startsWith(names(panas_items$en), "PA"),
 # 名前は対応する英語原項目のID（panas_items$en と同順）。
 #' Validated Japanese PANAS item wordings (Kawahito et al., 2011)
 #'
-#' @format See the source for structure.
+#' @format A named character vector of the twenty Japanese terms, named
+#'   PA01-PA10 and NA01-NA10 to match \code{panas_items$en} one for one.
 #' @export
 panas_ja_validated <- c(
-  PA01 = "興味のある",      # interested
-  PA02 = "興奮した",        # excited
-  PA03 = "強気な",          # strong
-  PA04 = "熱狂した",        # enthusiastic
-  PA05 = "誇らしい",        # proud
-  PA06 = "機敏な",          # alert
-  PA07 = "やる気がわいた",  # inspired
-  PA08 = "決心した",        # determined
-  PA09 = "注意深い",        # attentive
-  PA10 = "活気のある",      # active
-  NA01 = "苦悩した",        # distressed
-  NA02 = "うろたえた",      # upset
-  NA03 = "うしろめたい",    # guilty
-  NA04 = "おびえた",        # scared
-  NA05 = "敵意をもった",    # hostile
-  NA06 = "イライラした",    # irritable
-  NA07 = "恥ずかしい",      # ashamed
-  NA08 = "ぴりぴりした",    # nervous  ※Table 2 目視確認済み（項目16）
-  NA09 = "神経質な",        # jittery  ※Table 2 目視確認済み（項目19）
-  NA10 = "恐れた"           # afraid
+  PA01 = "\u8208\u5473\u306e\u3042\u308b",      # interested
+  PA02 = "\u8208\u596e\u3057\u305f",        # excited
+  PA03 = "\u5f37\u6c17\u306a",          # strong
+  PA04 = "\u71b1\u72c2\u3057\u305f",        # enthusiastic
+  PA05 = "\u8a87\u3089\u3057\u3044",        # proud
+  PA06 = "\u6a5f\u654f\u306a",          # alert
+  PA07 = "\u3084\u308b\u6c17\u304c\u308f\u3044\u305f",  # inspired
+  PA08 = "\u6c7a\u5fc3\u3057\u305f",        # determined
+  PA09 = "\u6ce8\u610f\u6df1\u3044",        # attentive
+  PA10 = "\u6d3b\u6c17\u306e\u3042\u308b",      # active
+  NA01 = "\u82e6\u60a9\u3057\u305f",        # distressed
+  NA02 = "\u3046\u308d\u305f\u3048\u305f",      # upset
+  NA03 = "\u3046\u3057\u308d\u3081\u305f\u3044",    # guilty
+  NA04 = "\u304a\u3073\u3048\u305f",        # scared
+  NA05 = "\u6575\u610f\u3092\u3082\u3063\u305f",    # hostile
+  NA06 = "\u30a4\u30e9\u30a4\u30e9\u3057\u305f",    # irritable
+  NA07 = "\u6065\u305a\u304b\u3057\u3044",      # ashamed
+  NA08 = "\u3074\u308a\u3074\u308a\u3057\u305f",    # nervous  ※Table 2 目視確認済み（項目16）
+  NA09 = "\u795e\u7d4c\u8cea\u306a",        # jittery  ※Table 2 目視確認済み（項目19）
+  NA10 = "\u6050\u308c\u305f"           # afraid
 )
 
 
@@ -113,7 +127,9 @@ panas_ja_validated <- c(
 # ベクトルの並び順 = 理論的円環順序（SD→ST→…→UN→SDと一周）
 #' Schwartz value descriptions (English) and the theoretical ring order
 #'
-#' @format See the source for structure.
+#' @format A list of three: \code{$en}, a named character vector of the ten
+#'   value descriptions; \code{$ja}, \code{NULL} (no validated translation is
+#'   used); and \code{$ring_order}, the theoretical circular order of the ten.
 #' @export
 schwartz_items <- list(
   en = c(
@@ -140,7 +156,11 @@ schwartz_items <- list(
 # PANAS の valence 軸（基準: Warriner et al., 2013 の valence 規範）
 #' Pre-specified anchor sets for the valence axis (EN/JA)
 #'
-#' @format See the source for structure.
+#' @format A list of two languages, \code{$en} and \code{$ja}. Each holds
+#'   anchor sets \code{$A} (the primary, three words per pole), \code{$B} (an
+#'   alternative wording, also three per pole) and \code{$C} (one word per
+#'   pole, the thinned sensitivity set). Each set is a list of \code{$high}
+#'   and \code{$low} character vectors.
 #' @export
 valence_anchors <- list(
   en = list(
@@ -152,12 +172,12 @@ valence_anchors <- list(
              low  = c("gloomy"))
   ),
   ja = list(
-    A = list(high = c("嬉しい", "喜ばしい", "楽しい"),
-             low  = c("悲しい", "不幸な", "惨めな")),
-    B = list(high = c("ポジティブな", "良い", "快い"),
-             low  = c("ネガティブな", "悪い", "不快な")),
-    C = list(high = c("喜びに満ちた"),
-             low  = c("陰鬱な"))
+    A = list(high = c("\u5b09\u3057\u3044", "\u559c\u3070\u3057\u3044", "\u697d\u3057\u3044"),
+             low  = c("\u60b2\u3057\u3044", "\u4e0d\u5e78\u306a", "\u60e8\u3081\u306a")),
+    B = list(high = c("\u30dd\u30b8\u30c6\u30a3\u30d6\u306a", "\u826f\u3044", "\u5feb\u3044"),
+             low  = c("\u30cd\u30ac\u30c6\u30a3\u30d6\u306a", "\u60aa\u3044", "\u4e0d\u5feb\u306a")),
+    C = list(high = c("\u559c\u3073\u306b\u6e80\u3061\u305f"),
+             low  = c("\u9670\u9b31\u306a"))
   )
 )
 
@@ -165,7 +185,9 @@ valence_anchors <- list(
 # アンカーは「高／低威信の仕事を表す句」であり、データセット内の職業名は使わない。
 #' Pre-specified anchor sets for the occupational-prestige axis
 #'
-#' @format See the source for structure.
+#' @format A list of three anchor sets, \code{$A} (the primary, three phrases
+#'   per pole), \code{$B} and \code{$C} (the thinned sensitivity sets). Each is
+#'   a list of \code{$high} and \code{$low} character vectors. English only.
 #' @export
 prestige_anchors <- list(
   A = list(high = c("a highly respected profession",

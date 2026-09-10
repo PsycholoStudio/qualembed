@@ -4,7 +4,9 @@
 \alias{schwartz_items}
 \title{Schwartz value descriptions (English) and the theoretical ring order}
 \format{
-See the source for structure.
+A list of three: \code{$en}, a named character vector of the ten
+  value descriptions; \code{$ja}, \code{NULL} (no validated translation is
+  used); and \code{$ring_order}, the theoretical circular order of the ten.
 }
 \usage{
 schwartz_items

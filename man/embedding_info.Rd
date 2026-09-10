@@ -7,24 +7,27 @@
 embedding_info(x)
 }
 \arguments{
-\item{x}{A matrix returned by \code{embed()}, or a list of such matrices
-(as \code{save_embeddings()} archives them).}
+\item{x}{A matrix returned by \code{\link{embed}}, or a list of such
+matrices (as \code{\link{save_embeddings}} archives them).}
 }
 \value{
-A one-row data frame per matrix, invisibly.
+A one-row data frame per matrix, invisibly, with the provider, the
+  model, the embedding dimensionality, the request options, the access date
+  and the software that fetched the vectors.
 }
 \description{
 Prints what a method section needs in order to identify the measurement:
 the provider and model, the embedding dimensionality, every request option
 including the ones left at their defaults, when the vectors were fetched,
-and the software that fetched them. Returns the same fields as a one-row
-data frame, invisibly, so they can be written to a results file.
+and the software that fetched them. Returns those fields as a one-row
+data frame, invisibly, so they can be written to a results file; the
+per-request batch sizes are printed but not returned.
 }
 \details{
 Commercial embedding models are versioned products that are retired on the
 provider's schedule. A matrix that records only its numbers cannot be
 matched to the instrument that produced it once that instrument is gone,
-which is why \code{embed()} attaches these attributes and why archived
+which is why \code{\link{embed}} attaches these attributes and why archived
 matrices carry them.
 }
 \examples{
@@ -33,4 +36,9 @@ emb <- embed(c("first text", "second text"), provider = "openai")
 embedding_info(emb)
 embedding_info(readRDS("output/embeddings/demo1_bfi_openai.rds"))
 }
+}
+\seealso{
+\code{\link{embed}}, which attaches these attributes, and
+  \code{\link{save_embeddings}}, which archives them. What each field is
+  for: \url{https://github.com/PsycholoStudio/qualembed/blob/main/docs/provenance.md}.
 }

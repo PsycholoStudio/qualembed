@@ -2,7 +2,7 @@
 % Please edit documentation in R/stats-viz.R
 \name{plot_trajectory}
 \alias{plot_trajectory}
-\title{意味空間上の軌跡を矢印で描く}
+\title{Plot a document's trajectory through semantic space}
 \usage{
 plot_trajectory(
   emb,
@@ -24,86 +24,147 @@ plot_trajectory(
 )
 }
 \arguments{
-\item{emb}{セグメントの埋め込み行列}
+\item{emb}{A numeric matrix of segment embeddings, one row per segment;
+rows are matched to the table by \code{docname} where possible, otherwise
+by position.}
 
-\item{seg}{as_segments() の契約を満たす表}
+\item{seg}{A segment table satisfying the \code{\link{as_segments}}
+contract.}
 
-\item{doc}{描く文書。NULL なら全文書（scope に従う）。}
+\item{doc}{A character vector naming the document(s) to draw. Defaults to
+\code{NULL}, which draws them all, following \code{scope}.}
 
-\item{scope}{"document"（既定・文書ごとの配置）/ "shared"（共通の配置）}
+\item{scope}{Character; either \code{"document"} (a layout per document) or
+\code{"shared"} (one layout for the pool). Drawing more than one document
+promotes \code{"document"} to \code{"shared"} automatically. Defaults to
+\code{"document"}.}
 
-\item{layout}{"mds"（既定・非計量MDS）/ "pca"。MDS は距離の順位を目的関数に
-するので、次元数が点数を大きく超える埋め込みでは平面が忠実になる。
-ただし1文書ぶんの数点に当てても意味はない（4点は2次元に厳密に置ける）。
-比較したい文書が複数あるなら scope = "shared" と併せて使うこと。}
+\item{layout}{Character; either \code{"mds"} (non-metric MDS) or
+\code{"pca"}. MDS
+optimises the rank order of the distances, so it gives a more faithful
+plane when the number of dimensions far exceeds the number of points.
+There is little to gain from applying it to the handful of points in one
+document, three points sitting exactly in two dimensions; pair it with
+\code{scope = "shared"} when documents are to be compared. Defaults to
+\code{"mds"}.}
 
-\item{axis}{事前指定の方向（埋め込みと同じ長さの数値ベクトル。高低アンカーの
-差ベクトルなど）。渡すと、その方向が x 軸に最も沿う向きへ配置を回す。
-回転は距離も角度も変えないので忠実さには影響せず、軸の解釈だけが変わる。
-プロバイダ間で符号や向きが揃わない問題も、これで解消する。}
+\item{axis}{An optional numeric vector with one element per embedding
+dimension, such as the difference between the high and low anchor means.
+The layout is rotated so that this direction lies as nearly as possible
+along the x axis. Rotation changes neither distances nor angles, so
+fidelity is unaffected and only the interpretation of the axes changes;
+it also removes the arbitrary sign and orientation that otherwise differ
+between providers. Defaults to \code{NULL} (no rotation).}
 
-\item{zoom}{scope = "shared" のとき、軸の範囲を描く文書に合わせる（既定
-FALSE = プール全体）。基底は共通のままなので位置の意味は変わらないが、
-範囲が文書ごとに違うので、パネル間で位置を読み比べることはできなくなる。
-動きの小さい文書が一点に潰れて形が読めないときに使う。}
+\item{zoom}{Logical; under \code{scope = "shared"}, whether to fit the
+axis limits to the document being drawn rather than to the whole pool.
+The basis stays shared, so positions keep their meaning, but the ranges
+then differ between panels and positions can no longer be read across
+them. Use it when a document that moves little collapses to a point.
+Defaults to \code{FALSE}.}
 
-\item{arrows}{進行方向の矢印を描く（既定 TRUE）}
+\item{arrows}{Logical; whether to draw an arrowhead on every step. Defaults
+to \code{TRUE}.}
 
-\item{label}{セグメント番号を書く（既定 TRUE）}
+\item{label}{Logical; whether to print the segment number inside each point.
+Defaults to \code{TRUE}.}
 
-\item{text}{セグメント本文を図の右に並記する（既定 FALSE）。点と語りの
-対応を追えるようになるが、文書は一つに限られ、セグメントが text_max を
-超えると収まらないので黙って降りる。patchwork が要る。}
+\item{text}{Logical; whether to print the segment texts beside the
+plot so that points can be matched to what was said. This is limited to
+a single document and to \code{text_max} segments; outside those limits,
+or without the \pkg{patchwork} package, the text is dropped with a
+warning and the plot is returned on its own. Defaults to \code{FALSE}.}
 
-\item{text_wrap}{並記する本文の折り返し幅（文字数）}
+\item{text_wrap}{Integer; the wrapping width, in characters, for the printed
+texts. Defaults to 34.}
 
-\item{text_max}{並記に応じるセグメント数の上限（既定 8）}
+\item{text_max}{Integer; the largest number of segments for which the texts
+are printed, beyond which the panel cannot hold them. Defaults to 8.}
 
-\item{title}{図題}
+\item{title}{Character; the plot title. Defaults to \code{NULL}, which
+prints \code{"Trajectory through semantic space"}.}
 
-\item{compact}{小さく描く（並置用に文字と点を縮め、副題を1行にする）}
+\item{compact}{Logical; whether to draw small for placing plots side by
+side, with smaller text and points, no legend, and a one-line subtitle.
+Defaults to \code{FALSE}.}
 
-\item{null_reps}{副題に出す帰無の反復数。0 で計算しない（既定 200）}
+\item{null_reps}{Integer; the number of random draws behind the fidelity
+null shown in the subtitle, where 0 skips it. Defaults to 200.}
 
-\item{fidelity}{忠実さを副題に刷る（既定 TRUE）。共通射影のパネルを並べる
-ときは同じ数字が繰り返されるので、FALSE にして図の注に一度書くとよい。}
+\item{fidelity}{Logical; whether to print the fidelity line as a subtitle.
+When several shared-projection panels are laid out together the
+same figures repeat on each, so set it \code{FALSE} and state them once
+in the figure note. Defaults to \code{TRUE}.}
 }
 \value{
-ggplot（表示もする）
+A \pkg{ggplot2} object (printed when called at the top level): one
+  point per segment numbered in narrative order, the last drawn as a square and
+  the rest as circles, an arrow for every step, faint axes through the
+  origin (which is the centroid of the segments), equal scaling with
+  matching breaks on both axes, and the fidelity subtitle unless
+  \code{fidelity = FALSE}. Several documents are faceted. With
+  \code{text = TRUE} a \pkg{patchwork} of the plot and the segment texts
+  is returned instead.
 }
 \description{
-発言の順に点を結び、矢印で向きを示す。これは「どの順に、どちらへ動いたか」
-を見るための図である。
+Joins the segments of a document in the order they were spoken or written
+and marks the direction of travel with arrows, so that where a text went,
+and in what order, can be seen at a glance.
+
+\strong{This is not the display to look at first.} Look at
+\code{\link{plot_recurrence}} and \code{\link{plot_arc}} first, neither of
+which passes through a projection. Of the three displays this is the only
+one that has to be read with a geometric caveat held in mind throughout, and
+a display that needs caveats is a poor instrument for forming a first
+impression of the data.
 }
 \details{
-**最初に見る図ではない。** 投影を経ない plot_recurrence() と plot_arc() を
-先に見ること。3つの表示のうち、読みながら幾何の但し書きを付けて回らねば
-ならないのはこれだけである。但し書きの要る図は、データの第一印象を作る
-道具として劣る。
-
-**矢印が担う順序は射影で歪まない。歪むのは距離と角度である。**
-したがって「3番目でいったん戻って、そこから一方向に進んだ」という読みは
-この図から取ってよい。「Aさんのほうが長く動いた」という読みは取っては
-ならない——それは全次元で測る量で、trajectory_stats() が返す。
-図の副題に、その射影がどれだけ距離を保っているか（Shepard 順位相関）と、
-同じ本数を無作為に取ったときの帰無を並べて出す。読むのは差のほうである。
-
-**距離は読めなくはない。読み方の問題である。** 3社とも単位ノルムの
-ベクトルを返すので、全次元での Euclid 距離はコサイン類似度 s に
-d = sqrt(2(1-s)) で厳密に対応する（順位相関は正確に -1）。中心化は
-平行移動なので距離を変えない。つまり平面上の遠近は、他のすべての分析が
-使っているコサインの順序をそのまま表している。ただし目盛りは非線形で、
-s が 1 に近いほど間隔が伸びる（s = .95 付近では .05 の差が d を .13、
-s = .50 付近では .05 と、2.7 倍の開きがある）。似た者どうしの差は
-誇張され、離れた者どうしの差は圧縮される。順位は読んでよく、
-比は読んではならない。
-
-射影は既定で**文書ごと**に計算する。ただし n が小さいと説明率も順位相関も
-機械的に上がるので（n = 3 なら常に厳密）、生の値を忠実さの証拠と読んでは
-ならない。複数の文書を見比べるなら scope = "shared" を使う。共通射影は
-基底も軸の範囲もプール全体から決めるので、1文書ずつ描いて並べたパネルが
-そのまま比較できる。詳しくは trajectory_fidelity() を参照。
+A warning is raised when per-document planes preserve no more rank order
+than the same number of segments drawn at random from the pool, which is
+the usual case at survey lengths. Treat it as an instruction to read the
+order rather than the distances, and to move to \code{scope = "shared"},
+\code{\link{plot_recurrence}} or \code{\link{plot_arc}}.
 }
+\section{What the picture supports}{
+
+\strong{The order the arrows carry is exact; what the projection distorts
+is distance and angle.} A reading such as "it doubled back at the third
+segment and then moved in one direction" may be taken from this plot. A
+reading such as "A moved further than B" may not: that is a quantity
+measured in all dimensions, and \code{\link{trajectory_stats}} is what
+returns it. The subtitle prints how much of the distance structure the
+projection preserves (a Shepard rank correlation) beside the null obtained
+by drawing the same number of segments at random. Read the difference
+between them, not the observed number.
+
+\strong{Distances are not unreadable; they have to be read as ranks.} All
+three providers return unit-norm vectors, so Euclidean distance in all
+dimensions corresponds exactly to cosine similarity s as
+d = sqrt(2(1 - s)), their rank correlation being exactly -1, and centering
+is a translation and leaves distances unchanged. Near and far on the page
+therefore reproduce the cosine ordering that every other analysis here
+uses. The scale, however, is non-linear: because d is the square root of
+2(1 - s), it stretches as s approaches 1, so the same step in similarity
+spans several times more of the page between near segments than between
+distant ones. Differences among similar segments are exaggerated and
+differences among distant ones compressed. Read the ranks; do not read the
+ratios.
+}
+
+\section{Choosing the scope}{
+
+The layout is solved per document by default. With few segments both the
+variance explained and the rank correlation rise mechanically (at n = 3 a
+plane is always exact), so the raw fidelity figures are not evidence that
+the map can be trusted. To compare documents use \code{scope = "shared"}:
+the basis and the axis limits are then taken from the whole pool, so
+panels drawn one document at a time can be laid side by side and read
+against one another. See \code{\link{trajectory_fidelity}} for the
+diagnostic.
+}
+
 \seealso{
-[trajectory_fidelity()], [trajectory_stats()], [plot_recurrence()]
+\code{\link{trajectory_fidelity}}, \code{\link{trajectory_stats}},
+  \code{\link{plot_recurrence}}. Which display to reach for first, and how
+  to read each: \url{https://github.com/PsycholoStudio/qualembed/blob/main/docs/reading-plots.md}.
 }

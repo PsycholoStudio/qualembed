@@ -2,22 +2,39 @@
 % Please edit documentation in R/stats-viz.R
 \name{test_delta}
 \alias{test_delta}
-\title{Δ = within − between の permutation 検定
-帰無分布はグループラベルを項目上でシャッフルして生成する}
+\title{Test the within-between contrast Delta by permutation}
 \usage{
 test_delta(sim_mat, groups, n_perm = 9999)
 }
 \arguments{
-\item{sim_mat}{cos_sim_matrix() の出力}
+\item{sim_mat}{A square similarity matrix, typically the output of
+\code{\link{cos_sim_matrix}}.}
 
-\item{groups}{グループラベル}
+\item{groups}{A vector of group labels, one per row of \code{sim_mat} and
+in the same order. At least two distinct groups are required, and at
+least one group must have two members.}
 
-\item{n_perm}{並べ替え回数}
+\item{n_perm}{Integer; the number of label permutations. Defaults to 9999,
+for which the smallest attainable p value is 1e-04.}
 }
 \value{
-list(within, between, delta, sd_between, delta_std, p, n_perm)
+A list with the descriptive quantities of
+  \code{\link{within_between_sim}} (\code{within}, \code{between},
+  \code{delta}, \code{sd_between}, \code{delta_std}), plus \code{null} (the
+  vector of \code{n_perm} permuted values of Delta), \code{p} (the
+  one-sided permutation p value, computed as one plus the number of null
+  values at least as large as the observed one, divided by
+  \code{1 + n_perm}) and \code{n_perm}.
 }
 \description{
-Δ = within − between の permutation 検定
-帰無分布はグループラベルを項目上でシャッフルして生成する
+Tests whether items that share a theoretical group label are more similar
+to one another than to items of other groups. The observed
+\eqn{\Delta = within - between} is referred to a null distribution obtained
+by shuffling the group labels across items while the similarity matrix is
+held fixed, so no distributional assumption about the similarities is
+needed.
+}
+\seealso{
+\code{\link{within_between_sim}} for the descriptives alone, and
+  \code{\link{test_ari}} for the clustering counterpart.
 }

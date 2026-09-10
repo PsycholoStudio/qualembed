@@ -2,7 +2,7 @@
 % Please edit documentation in R/stats-viz.R
 \name{segment_text}
 \alias{segment_text}
-\title{長いテキストを分割して、契約を満たす表を返す}
+\title{Split long texts into segments}
 \usage{
 segment_text(
   x,
@@ -15,50 +15,82 @@ segment_text(
 )
 }
 \arguments{
-\item{x}{文字ベクトル。各要素が1つの文書。}
+\item{x}{A character vector; each element is one document.}
 
-\item{by}{"sentence"（文）、"words"（語数の窓）、"chars"（文字数の窓）、
-"paragraph"（空行区切り）。トークン上限が理由で切るなら "chars" が、
-言語をまたいで意味の揃う唯一の単位である。}
+\item{by}{Character; the unit of segmentation, either \code{"sentence"} (ICU
+sentence boundaries), \code{"words"} (fixed-width window in words),
+\code{"chars"} (fixed-width window in characters), or \code{"paragraph"}
+(blank-line separated blocks). If the reason for splitting is a token
+limit, \code{"chars"} is the only unit that means the same thing across
+languages. Defaults to \code{"sentence"}.}
 
-\item{size}{窓の大きさ。NULL なら words = 50、chars = 200。}
+\item{size}{Integer; the window size for \code{by = "words"} or
+\code{"chars"}, ignored otherwise. Defaults to \code{NULL}, which uses 50
+words or 200 characters.}
 
-\item{overlap}{窓の重なり。既定 0。}
+\item{overlap}{Integer; the number of words or characters shared between
+consecutive windows. Must be smaller than \code{size}. Defaults to 0.}
 
-\item{min_words}{これ未満の語数の断片は直前の断片に併合する。既定 2、
-すなわち1語だけの断片（「はい。」のような相槌）だけを吸収する。
-3 にすると "It worked." のような正当な短文まで併合されるので勧めない。
-0 にすれば併合しない。}
+\item{min_words}{Integer; the length in words below which a fragment is
+merged into the preceding segment. A value of 2 absorbs only one-word
+fragments, such as a bare backchannel ("Right."); raising it to 3 also
+swallows legitimate short sentences such as "It worked.", which is why it
+is not recommended, and 0 merges nothing. Defaults to 2.}
 
-\item{abbrev}{文分割で保護する略語。qe_abbreviations() 参照。}
+\item{abbrev}{A character vector of abbreviations whose periods are
+protected from sentence splitting, written without the trailing period;
+pass \code{character(0)} to disable. Defaults to
+\code{qe_abbreviations()}.}
 
-\item{ids}{文書ID。既定は連番。}
+\item{ids}{A vector of document identifiers, one per element of \code{x},
+used as \code{doc_id}. Defaults to \code{NULL}, which numbers the
+documents sequentially.}
 }
 \value{
-qe_segments（doc_id, segid, text, n_words, n_char, docname）
+A \code{qe_segments} object (see \code{\link{as_segments}}) with
+  columns \code{doc_id}, \code{segid}, \code{text}, \code{n_words},
+  \code{n_char} and \code{docname}, and the unit of segmentation recorded as
+  an attribute.
 }
 \description{
-長大な記述——インタビュー記録、日誌、複数段落の自由記述——は、そのまま
-埋め込むと一つの点になり、内部の推移が失われる。分割してから埋め込めば
-意味空間上の軌跡として扱える。ただし分割の単位は結果を変えるので、
-単位は分析者が明示的に選ぶべきものであり、既定値に委ねてはならない。
-自分の規則で切ったものを as_segments() に渡すほうが普通の使い方である。
+Splits each element of a character vector into segments and returns them as
+a \code{qe_segments} table. A long response -- an interview transcript, a
+diary entry, a multi-paragraph open-ended answer -- becomes a single point
+when embedded whole, and everything that moves inside it is lost. Embedding
+its segments instead turns the response into a trajectory through semantic
+space. The unit of segmentation changes the result, so choose \code{by}
+deliberately rather than accepting a default; splitting the text by your own
+rule and passing it to \code{\link{as_segments}} is the more usual path.
 }
 \details{
-文分割と語数は ICU（stringi）の境界解析による。したがって英語の
-`.!?` と日本語の `。！？` が同じ呼び出しで処理され、語数も日本語では
-形態素単位になる。言語を指定する引数はない——ICU が内部で書記系を見る
-ので、判定すべき対象が存在しない。locale も指定しない（UAX#29 の
-ロケール非依存部分しか使われず、実測で locale の効果はなかった）。
+Sentence boundaries and word counts come from the ICU boundary analysis in
+\pkg{stringi}. English \code{.!?} and their full-width Japanese
+counterparts are therefore handled by the same call, and word counts in
+Japanese are morpheme-based rather than whitespace-based. There is no
+language argument, because ICU inspects the writing system itself and leaves
+nothing for the caller to declare. No locale is set either: only the
+locale-independent part of UAX #29 is used, so the result does not depend
+on the locale the session happens to run in.
 
-二言語を対照する分析では **`by = "sentence"` を使うこと**。ICU の
-日本語「語」は形態素相当なので、同一内容の対訳で日本語は英語の
-およそ1.4倍の語数になる。`size = 50` は二つの言語で同じ窓ではない。
-対訳で一致したのは文の数だけだった。
+For analyses that compare two languages, use \code{by = "sentence"}. Because
+an ICU "word" in Japanese is roughly a morpheme, a translation yields more
+Japanese words than English ones for the same content, so \code{size = 50}
+is not the same window in the two languages. Sentence
+counts were the only unit that matched across translations.
+
+If the ICU build in use has no CJK word dictionary, a warning is issued the
+first time a word count is needed: word counts for Japanese will be too low,
+though sentence splitting is unaffected because it is rule-based. In that
+situation, use \code{by = "chars"} for windows and \code{min_words = 0} to
+disable the short-fragment merge.
 }
 \examples{
 \dontrun{
   seg <- segment_text(interviews, by = "words", size = 80, overlap = 20)
   emb <- embed(setNames(seg$text, seg$docname))
 }
+}
+\seealso{
+\code{\link{as_segments}} for text you have segmented yourself, and
+  \code{\link{read_segments}} for reading transcript files.
 }

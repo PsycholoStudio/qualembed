@@ -1,0 +1,37 @@
+cff-version: 1.2.0
+title: "qualembed: Embedding-Based Semantic Measurement and Calibration for Survey and Qualitative Text"
+message: >-
+  If you use this package, please cite both the software and the paper
+  it was written for.
+type: software
+authors:
+  - family-names: Muta
+    given-names: Toshizumi
+    email: toshizumi.muta@psycholo.studio
+    affiliation: Psycholo Studio
+version: 1.0.0
+date-released: 2026-09-10
+license: GPL-3.0-or-later
+repository-code: "https://github.com/PsycholoStudio/qualembed"
+abstract: >-
+  A thin, auditable toolkit for measuring the meaning of nominal and narrative
+  survey responses in the semantic space of large language model embeddings.
+  One request layer over three commercial providers, an analysis layer of
+  permutation-based statistics, and the displays the accompanying paper uses.
+keywords:
+  - text embeddings
+  - large language models
+  - survey research
+  - open-ended responses
+  - nominal data
+  - semantic similarity
+  - R
+references:
+  - type: article
+    title: >-
+      Embedding qualitative data in LLM semantic space: A tutorial on
+      conceptualization, measurement, and validation
+    authors:
+      - family-names: Muta
+        given-names: Toshizumi
+    year: 2026

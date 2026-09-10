@@ -2,19 +2,37 @@
 % Please edit documentation in R/stats-viz.R
 \name{write_stats}
 \alias{write_stats}
-\title{統計値を CSV に記録（原稿の数値との照合・再現性検証用）}
+\title{Record a set of statistics to a CSV file}
 \usage{
 write_stats(stats, name, provider, dir = "output")
 }
 \arguments{
-\item{stats}{名前付きリスト（数値または文字列）}
+\item{stats}{A named list or named vector of statistics. Each element is
+coerced with \code{as.character()} and only its first value is kept, so
+pass scalars.}
 
-\item{name}{デモ名（ファイル名の一部になる）}
+\item{name}{Character; the analysis or demonstration name, which becomes
+part of the file name and fills the \code{demo} column.}
 
-\item{provider}{プロバイダ名}
+\item{provider}{Character; the embedding provider name, which becomes part
+of the file name and fills the \code{provider} column.}
 
-\item{dir}{出力先ディレクトリ}
+\item{dir}{Character; the output directory, created recursively if missing.
+Defaults to \code{"output"}.}
+}
+\value{
+The data frame that was written, invisibly, with columns
+  \code{demo}, \code{provider}, \code{statistic}, \code{value} and
+  \code{date}.
 }
 \description{
-統計値を CSV に記録（原稿の数値との照合・再現性検証用）
+Writes the statistics an analysis produced to
+\code{dir/name_provider.csv}, one row per statistic. Keeping every reported
+number in a machine-readable file is what allows the values in a manuscript
+to be checked against the code that produced them, and allows a re-run to be
+compared with an earlier one.
+}
+\seealso{
+\code{\link{save_embeddings}} for archiving the matrices these
+  statistics were computed from.
 }

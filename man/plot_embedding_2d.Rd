@@ -2,22 +2,49 @@
 % Please edit documentation in R/stats-viz.R
 \name{plot_embedding_2d}
 \alias{plot_embedding_2d}
-\title{意味空間の2Dプロット（pca_2d / tsne_2d / umap_2d の出力を受け取る）}
+\title{Plot items as points in a two-dimensional semantic map}
 \usage{
 plot_embedding_2d(proj, labels = NULL, groups = NULL, title = NULL, size = 3.5)
 }
 \arguments{
-\item{proj}{pca_2d() などの戻り値（list）、または PC1/PC2/label 列を
-含む data.frame}
+\item{proj}{Either the list returned by \code{\link{coords_2d}} and its
+relatives, or a plain data frame with columns \code{PC1}, \code{PC2} and
+\code{label}. A data frame is treated as a PCA layout with unknown
+variance explained.}
 
-\item{labels}{点ラベル（NULL なら proj 内の label 列を使用）}
+\item{labels}{An optional character vector of point labels, overriding the
+\code{label} column in \code{proj}. Defaults to \code{NULL}.}
 
-\item{groups}{色分け用グループラベル（NULL で単色）}
+\item{groups}{An optional vector of group labels, one per point, used to
+colour the points. Defaults to \code{NULL} (a single colour).}
 
-\item{title}{図のタイトル}
+\item{title}{Character; the plot title. Defaults to \code{NULL}.}
 
-\item{size}{点のサイズ}
+\item{size}{Numeric; the point size passed to \code{geom_point()}. Defaults
+to 3.5.}
+}
+\value{
+A \pkg{ggplot2} object (printed when called at the top level): one
+  labelled point per item, coloured by \code{groups} where supplied, with
+  axis labels following the layout and, under PCA, a subtitle reporting the
+  variance explained. It can be modified further before printing or saving
+  with \code{\link{save_fig}}.
 }
 \description{
-意味空間の2Dプロット（pca_2d / tsne_2d / umap_2d の出力を受け取る）
+Draws the coordinates produced by \code{\link{coords_2d}},
+\code{\link{pca_2d}}, \code{\link{tsne_2d}} or \code{\link{umap_2d}} as a
+labelled scatter plot, optionally coloured by a grouping variable. Point
+labels are placed with \pkg{ggrepel}, so items that fall close together stay
+readable.
+}
+\details{
+Variance explained is a property of PCA, so the subtitle reporting it is
+printed only when the coordinates came from a PCA layout; under MDS it is
+omitted rather than shown as a misleading number. Axis labels follow the
+layout as well (\code{PC1}/\code{PC2} for PCA, \code{Dimension 1}/
+\code{Dimension 2} for MDS).
+}
+\seealso{
+\code{\link{coords_2d}} for the coordinates it draws, and
+  \code{\link{plot_bilingual}} for the two-language display.
 }

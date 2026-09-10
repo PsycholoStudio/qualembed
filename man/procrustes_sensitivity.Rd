@@ -2,18 +2,36 @@
 % Please edit documentation in R/stats-viz.R
 \name{procrustes_sensitivity}
 \alias{procrustes_sensitivity}
-\title{Procrustes m² の k に対する感度分析（Method: k ∈ {2,...,10}）}
+\title{Trace the sensitivity of the Procrustes fit to the number of dimensions}
 \usage{
 procrustes_sensitivity(X, Y, ks = 2:10, layout = c("pca", "mds"))
 }
 \arguments{
-\item{X, }{Y  embedding 行列}
+\item{X}{A numeric embedding matrix for n items.}
 
-\item{ks}{試す主成分数の範囲}
+\item{Y}{A second embedding matrix for the same n items in the same row
+order.}
+
+\item{ks}{An integer vector of dimensionalities to try. Defaults to
+\code{2:10} and is silently truncated at
+\code{min(ncol(X), ncol(Y), nrow(X) - 1)}.}
+
+\item{layout}{Character; how the coordinates are formed, either \code{"pca"}
+or \code{"mds"}; passed to \code{\link{procrustes_m2}}. Defaults to
+\code{"pca"}.}
 }
 \value{
-data.frame(k, m2)
+A data frame with one row per retained value of \code{k} and
+  columns \code{k}, \code{m2} and \code{layout}.
 }
 \description{
-Procrustes m² の k に対する感度分析（Method: k ∈ {2,...,10}）
+Repeats \code{\link{procrustes_m2}} over a range of \code{k} so that the
+agreement between two spaces can be read as a curve rather than as a single
+number that depends on an arbitrary choice of dimensionality. The
+permutation test is skipped throughout, since only the shape of the curve
+is at issue.
+}
+\seealso{
+\code{\link{procrustes_m2}}, the single-\code{k} fit this repeats,
+  and \code{\link{mantel_test}}, which needs no choice of dimensionality.
 }

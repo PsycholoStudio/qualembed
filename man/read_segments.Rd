@@ -2,7 +2,7 @@
 % Please edit documentation in R/stats-viz.R
 \name{read_segments}
 \alias{read_segments}
-\title{逐語録・書き出しファイルからセグメント表を読む}
+\title{Read a segment table from transcripts or exported text files}
 \usage{
 read_segments(
   path,
@@ -17,44 +17,82 @@ read_segments(
 )
 }
 \arguments{
-\item{path}{ファイル、ファイルのベクトル、またはディレクトリ}
+\item{path}{Character; a file, a vector of files, or a directory.}
 
-\item{format}{"auto" または txt/docx/vtt/srt/csv/tsv/xlsx}
+\item{format}{Character; the file format, either \code{"auto"} (taken from
+the file extension) or one of \code{"txt"}, \code{"docx"}, \code{"vtt"},
+\code{"srt"}, \code{"csv"}, \code{"tsv"}, \code{"xlsx"}. Defaults to
+\code{"auto"}.}
 
-\item{unit}{"auto"（txt/docx→paragraph, vtt/srt→cue, 表→row）}
+\item{unit}{Character; the segmentation unit. \code{"auto"} gives paragraphs
+for txt and docx, cues for vtt and srt, and rows for tabular files.
+Defaults to \code{"auto"}.}
 
-\item{speaker}{行頭の「名前:」を話者列に分離する（既定 TRUE）}
+\item{speaker}{Logical; whether to split a leading \code{"Name:"} off each
+segment into a \code{speaker} column. Defaults to \code{TRUE}.}
 
-\item{doc_id}{表形式のとき文書ID列名。ファイル群のときは無視
-（ファイル名が doc_id になる）。}
+\item{doc_id}{Character; the name of the document-identifier column in a
+tabular file. Ignored when files are read from disk, where the file name
+becomes the \code{doc_id}. Defaults to \code{NULL}.}
 
-\item{pattern}{ディレクトリを渡したときのファイル絞り込み}
+\item{pattern}{A regular expression restricting which files are read when
+\code{path} is a directory. Defaults to \code{NULL}, which matches all
+supported extensions.}
 
-\item{recursive}{ディレクトリを再帰的に探す}
+\item{recursive}{Logical; whether to search the directory recursively.
+Defaults to \code{FALSE}.}
 
-\item{encoding}{ファイル符号化（既定 "UTF-8-BOM"）。R の文書で BOM 除去が
-保証されているのはこの指定だけで、BOM の無いファイルでも正しく動く。
-日本語の CSV を CP932 のまま既定で読むと、該当行が NA になって静かに
-落ちるため、読み込み後に NA があればエラーで止める。}
+\item{encoding}{Character; the file encoding. \code{"UTF-8-BOM"} is the
+only setting R
+documents as guaranteed to strip a byte-order mark, and it
+reads files without one correctly too. A character-encoding mismatch is
+silent rather than obvious: a Shift_JIS/CP932 file read as UTF-8 turns
+the affected rows into NA instead of mojibake, so rows vanish rather than
+look wrong. Any NA surviving the read therefore stops the function with
+an error. \code{"CP932"}, for a Japanese Windows export, works for the
+delimited formats and needs a session whose locale can represent the
+characters, since R converts as it reads; a plain \code{.txt} in that
+encoding has to be converted before it reaches this function. A UTF-8
+file is read without conversion and so does not depend on the locale.
+Defaults to \code{"UTF-8-BOM"}.}
 
-\item{...}{as_segments() に渡す}
+\item{...}{Passed to \code{\link{as_segments}}.}
 }
 \value{
-qe_segments
+A \code{qe_segments} data frame, one row per segment, with columns
+  \code{doc_id}, \code{segid}, \code{text}, \code{n_words}, \code{n_char},
+  \code{docname} (\code{doc_id.segid}, the name to embed the text under),
+  and \code{speaker} where a speaker prefix was found.
 }
 \description{
-逐語録・書き出しファイルからセグメント表を読む
+Reads one file, a vector of files, or a whole directory of transcripts and
+returns a segment table ready for the trajectory functions. Text and Word
+files are split into paragraphs, subtitle files into cues, and spreadsheet
+or delimited exports are taken one row per segment. Use this whenever the
+material already lives in files, rather than assembling a segment table by
+hand.
 }
 \details{
-推奨する置き方は「1参加者1ファイル、話者交替を空行区切りの段落、
-話者名は `名前:` の接頭辞」である。.docx の逐語録はたいてい既にこの形で
-あり、Zoom / Teams / Whisper の .vtt はさらに話者と時刻を持っている。
+The recommended layout is one file per participant, one paragraph per
+speaker turn separated by a blank line, and a speaker prefix of the form
+\code{Name:}. Word transcripts usually arrive in that form already, and
+the .vtt files produced by Zoom, Teams, or Whisper additionally carry
+speaker labels and time stamps.
 
-「1行1セグメント」の .txt は**勧めない**。その形を吐くのは Whisper の
-txt 出力だが、あの行は2〜5秒の音声区間であって話者交替でも文でもない。
-そのため .txt の既定単位は "line" ではなく "paragraph" であり、
-空行のない多行ファイルには警告が出る。
+One segment per line in a .txt file is \strong{not} recommended. Whisper's
+plain-text output has that shape, but its lines are two- to five-second
+audio spans rather than speaker turns or sentences. The default unit for
+.txt is therefore "paragraph" and not "line", and a multi-line file with
+no blank lines raises a warning.
 
-質的分析ソフトからの書き出し（CSV/Excel）は1行1セグメントなので、
-そのまま読める。列名は as_segments() が自動照合する。
+Exports from qualitative-analysis software (CSV or Excel) are already one
+row per segment and can be read as they stand; \code{\link{as_segments}}
+matches their column names automatically.
+
+Reading .docx requires the \pkg{xml2} package and .xlsx requires
+\pkg{readxl}; the other formats need no extra dependency.
+}
+\seealso{
+\code{\link{as_segments}}, \code{\link{trajectory_stats}},
+  \code{\link{plot_recurrence}}
 }

@@ -4,7 +4,9 @@
 \alias{prestige_anchors}
 \title{Pre-specified anchor sets for the occupational-prestige axis}
 \format{
-See the source for structure.
+A list of three anchor sets, \code{$A} (the primary, three phrases
+  per pole), \code{$B} and \code{$C} (the thinned sensitivity sets). Each is
+  a list of \code{$high} and \code{$low} character vectors. English only.
 }
 \usage{
 prestige_anchors

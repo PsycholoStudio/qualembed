@@ -2,24 +2,35 @@
 % Please edit documentation in R/stats-viz.R
 \name{test_ari}
 \alias{test_ari}
-\title{Ward法階層クラスタリング → 理論分類との ARI + permutation 検定
-embedding 行列からコサイン類似度を計算して test_ari_sim() に委譲する}
+\title{Cluster an embedding and test its agreement with theory}
 \usage{
 test_ari(mat, groups, k = length(unique(groups)), n_perm = 9999)
 }
 \arguments{
-\item{mat}{embedding行列}
+\item{mat}{A numeric matrix with one row per text, as returned by
+\code{\link{embed}}.}
 
-\item{groups}{理論的グループラベル}
+\item{groups}{A vector of theoretical group labels, one per row of
+\code{mat} and in the same order.}
 
-\item{k}{クラスタ数（既定 = グループ数）}
+\item{k}{Integer; the number of clusters to cut. Defaults to the number of
+distinct labels in \code{groups}.}
 
-\item{n_perm}{並べ替え回数}
+\item{n_perm}{Integer; the number of label permutations. Defaults to 9999.}
 }
 \value{
-list(ari, p, clusters, table, hclust, n_perm)
+The list returned by \code{\link{test_ari_sim}}, with components
+  \code{ari}, \code{p}, \code{null}, \code{clusters}, \code{table},
+  \code{hclust} and \code{n_perm}.
 }
 \description{
-Ward法階層クラスタリング → 理論分類との ARI + permutation 検定
-embedding 行列からコサイン類似度を計算して test_ari_sim() に委譲する
+Computes the cosine similarity matrix of an embedding with
+\code{\link{cos_sim_matrix}} and passes it to \code{\link{test_ari_sim}}.
+Use this function when starting from an embedding matrix, and
+\code{\link{test_ari_sim}} when starting from a similarity matrix of some
+other kind, such as correlations among observed responses.
+}
+\seealso{
+\code{\link{test_ari_sim}} to start from a similarity matrix, and
+  \code{\link{adjusted_rand_index}} for the index itself.
 }
