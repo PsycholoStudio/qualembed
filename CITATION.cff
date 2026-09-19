@@ -11,6 +11,7 @@ authors:
     affiliation: Psycholo Studio
 version: 1.0.0
 date-released: 2026-09-19
+doi: 10.5281/zenodo.22682901
 license: GPL-3.0-or-later
 repository-code: "https://github.com/PsycholoStudio/qualembed"
 abstract: >-
