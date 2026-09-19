@@ -368,7 +368,7 @@ of the construct. Fix the structure from theory, then test it.
 
 This package ships functions, not datasets. It carries no scale items and no
 anchor sets: those belong to the instruments and studies they come from, and
-you supply your own. The materials used in the paper are in its OSF deposit.
+you supply your own. The materials used in the paper are in its OSF deposit (<https://doi.org/10.17605/OSF.IO/GU2BQ>).
 
 ## 9. Long documents: interviews, diaries, transcripts
 
@@ -574,7 +574,7 @@ specifies the structure, the statistics test it. For exploratory embedding workf
 (grouping, projection, LLM-assisted labeling) see
 [dwulff/embedR](https://github.com/dwulff/embedR); for transformer-based language
 analysis in R see [`text`](https://r-text.org). The full analysis scripts and archived
-embedding matrices for the paper are deposited on OSF (link forthcoming).
+embedding matrices for the paper are deposited on OSF (<https://doi.org/10.17605/OSF.IO/GU2BQ>).
 
 ## Citation
 
