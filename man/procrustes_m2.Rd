@@ -13,7 +13,12 @@ procrustes_m2(X, Y, k = 5, n_perm = 9999, layout = c("pca", "mds"))
 order; its number of columns may differ from that of \code{X}.}
 
 \item{k}{Integer; the number of dimensions retained before the fit.
-Defaults to 5 and is capped at \code{min(ncol(X), ncol(Y), nrow(X) - 1)}.}
+Defaults to 5 and is capped at \code{min(ncol(X), ncol(Y), nrow(X) - 1)}.
+The default is a convenience, not a recommendation: \code{m2} is computed
+on however many dimensions you retain, and that number is a choice the
+similarity matrix does not require. Report how far the value moves across
+it with \code{\link{procrustes_sensitivity}}, and let
+\code{\link{mantel_test}} carry the verdict.}
 
 \item{n_perm}{Integer; the number of PROTEST permutations. Defaults to
 9999; set to 0 to skip the test, in which case \code{p} is \code{NA}.}

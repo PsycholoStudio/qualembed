@@ -558,6 +558,11 @@ mantel_test <- function(m1, m2, n_perm = 9999) {
 #'   order; its number of columns may differ from that of \code{X}.
 #' @param k Integer; the number of dimensions retained before the fit.
 #'   Defaults to 5 and is capped at \code{min(ncol(X), ncol(Y), nrow(X) - 1)}.
+#'   The default is a convenience, not a recommendation: \code{m2} is computed
+#'   on however many dimensions you retain, and that number is a choice the
+#'   similarity matrix does not require. Report how far the value moves across
+#'   it with \code{\link{procrustes_sensitivity}}, and let
+#'   \code{\link{mantel_test}} carry the verdict.
 #' @param n_perm Integer; the number of PROTEST permutations. Defaults to
 #'   9999; set to 0 to skip the test, in which case \code{p} is \code{NA}.
 #' @param layout Character; how the k coordinates are formed, either
@@ -803,20 +808,20 @@ cor_jackknife <- function(X, stat, level = .95) {
 #'   neither centered nor normalised, so their ordering and relative spacing
 #'   are interpretable but their absolute level is not.
 #' @examples
-#' # Anchors ship as character vectors; embed them with the items, then
-#' # subset the matrix. Keep drop = FALSE: with the thinned set ($C, one
-#' # word per pole) the subset would otherwise stop being a matrix.
-#' a <- valence_anchors$en$A
+#' # Choose the two poles yourself: a handful of words or phrases that differ
+#' # on the axis you mean and on as little else as possible. Embed them with
+#' # the items, then subset the matrix. Keep drop = FALSE, or a one-word pole
+#' # would stop being a matrix.
+#' high <- c("happy", "pleased", "delighted")
+#' low  <- c("sad", "unhappy", "miserable")
 #' \dontrun{
 #' items <- c("cheerful", "downcast", "content")
-#' e <- embed(c(items, a$high, a$low), provider = "gemini")
+#' e <- embed(c(items, high, low), provider = "gemini")
 #' semantic_projection(e[items, ],
-#'                     e[a$high, , drop = FALSE],
-#'                     e[a$low, , drop = FALSE])
+#'                     e[high, , drop = FALSE],
+#'                     e[low, , drop = FALSE])
 #' }
-#' @seealso \code{\link{valence_anchors}} and \code{\link{prestige_anchors}}
-#'   for anchor sets shipped with the package,
-#'   \code{\link{coords_2d}}, whose \code{axis} argument takes the same
+#' @seealso \code{\link{coords_2d}}, whose \code{axis} argument takes the same
 #'   anchor contrast, and \code{\link{plot_arc}}, which projects segments onto
 #'   it.
 #' @export
@@ -2355,15 +2360,27 @@ trajectory_stats <- function(emb, seg, axis = NULL) {
 #' has three of them and a four-segment one has a single pair, so the mean is
 #' not worth reading below about six segments.
 #' Permutation is within document: documents are tested independently and the
-#' p values are not corrected across them.
+#' p values are not corrected across them. If you then read the smallest p
+#' among several documents, that smallest value is a search result and not a
+#' single test; pass \code{keep_null = TRUE} and build its null from the draws
+#' rather than moving the threshold.
+#' @param keep_null attach the permutation draws (one numeric vector per
+#'   returned row, in row order) as the \code{"null"} attribute of the result.
+#' @param alternative direction of the test: \code{"two.sided"} (the default)
+#'   where the statistic predicts no sign, \code{"less"} where the observed
+#'   value is predicted to fall below its shuffles, \code{"greater"} for the
+#'   opposite prediction.
 #' @seealso \code{\link{trajectory_stats}}, \code{\link{plot_recurrence}},
 #'   \code{\link{plot_arc}}
 #' @export
 trajectory_null <- function(emb, seg, n_perm = 999, stat = "path_length",
-                            lag_min = 3) {
+                            lag_min = 3, keep_null = FALSE,
+                            alternative = c("two.sided", "less", "greater")) {
+  alternative <- match.arg(alternative)
   a <- .align_emb(emb, seg); emb <- a$emb; seg <- a$seg
   docs <- unique(seg$doc_id)
-  do.call(rbind, lapply(docs, function(dd) {
+  .draws <- list()
+  out <- do.call(rbind, lapply(docs, function(dd) {
     k <- which(seg$doc_id == dd)
     k <- k[order(seg$segid[k])]
     if (length(k) < 3) return(NULL)          # 3段未満は並べ替えの意味がない
@@ -2385,15 +2402,21 @@ trajectory_null <- function(emb, seg, n_perm = 999, stat = "path_length",
     }
     obs  <- path(seq_along(k))
     null <- replicate(n_perm, path(sample.int(length(k))))
+    if (keep_null) .draws[[length(.draws) + 1L]] <<- null
     mu   <- mean(null, na.rm = TRUE)
     sdv  <- stats::sd(null, na.rm = TRUE)
     data.frame(doc_id = dd, n_seg = length(k), observed = obs,
                null_mean = mu,
                z = if (is.finite(sdv) && sdv > 0) (obs - mu) / sdv else NA_real_,
-               p = (sum(abs(null - mu) >= abs(obs - mu), na.rm = TRUE) + 1) /
+               p = (switch(alternative,
+                           two.sided = sum(abs(null - mu) >= abs(obs - mu), na.rm = TRUE),
+                           less      = sum(null <= obs, na.rm = TRUE),
+                           greater   = sum(null >= obs, na.rm = TRUE)) + 1) /
                    (n_perm + 1),
                stringsAsFactors = FALSE)
   }))
+  if (keep_null) attr(out, "null") <- .draws
+  out
 }
 
 #' Quantify recurrence in a segmented document
@@ -3131,10 +3154,9 @@ plot_trajectory <- function(emb, seg, doc = NULL,
       if (scope == "document") "segments drawn at random" else "isotropic points",
       .p2(.so), .p2(.sn))
     else if (.has_null) sprintf(
-      "%s projection. Distances on the page keep a rank correlation of %s with the full-dimensional ones, against %s for %s.",
+      "%s projection. Distances on the page keep a rank correlation of %s with the full-dimensional ones, against %s for the same segments drawn at random.",
       if (scope == "document") "Per-document" else "Shared",
-      .p2(.so), .p2(.sn),
-      if (scope == "document") "segments drawn at random" else "isotropic points")
+      .p2(.so), .p2(.sn))
     else sprintf(
       "%s projection. Distances on the page keep a rank correlation of %s with the full-dimensional ones. Too few documents to build a null.",
       if (scope == "document") "Per-document" else "Shared", .p2(.so)),
@@ -3386,4 +3408,86 @@ plot_trajectories <- function(df, person_col = "person",
     theme(plot.title = element_text(face = "bold"),
           panel.grid.minor = element_blank())
   p
+}
+
+#' Angular deviation of each item from its theorized position on a circumplex
+#'
+#' @description
+#' Scores how far each item sits from the angle a circumplex theory assigns it,
+#' on the plane that comes closest to those angles. The plane is the solution of
+#' an orthogonal Procrustes problem rather than a search: with \eqn{X^T C = U D
+#' V^T}, the rotation \eqn{Q = U_{[,1:2]} V^T} minimises the residual, so no
+#' choice is made after seeing the fit. A best overall rotation is then removed,
+#' which fixes the circular mean of the signed deviations at zero; the ten
+#' deviations are therefore not independent of one another, and a per-item band
+#' must come from permuting the labels rather than from a formula.
+#'
+#' The mean absolute deviation failing to beat a null does not mean the ring is
+#' blurred. Item by item the function separates two different conclusions: that
+#' the configuration is diffuse, and that particular items are displaced in a
+#' fixed direction that several providers agree on.
+#'
+#' The principal components used here are a full-rank rotation and drop no
+#' dimensions, so nothing is lost and the metric-versus-non-metric question that
+#' arises for \code{\link{coords_2d}} does not arise.
+#'
+#' @param emb A numeric matrix with one row per item, as returned by
+#'   \code{\link{embed}}. Rows must already be in the theoretical order around
+#'   the ring.
+#' @param angles Numeric; the theorized angle of each row in radians.
+#'   \code{NULL}, the default, uses an evenly spaced ring.
+#' @param n_perm Integer; permutations of the item labels used for the null.
+#'   Defaults to 999. Zero skips the null and returns \code{NA} for the last two
+#'   elements.
+#' @return A list with \code{coords} (coordinates on the best plane),
+#'   \code{theory} (the theorized angles), \code{observed} (the observed
+#'   angles), \code{signed} (signed deviation in degrees, named by row),
+#'   \code{mean_abs} (mean absolute deviation in degrees), \code{null_median}
+#'   (median of the null distribution of \code{mean_abs}), and \code{p} (the
+#'   one-sided permutation p for \code{mean_abs}).
+#'
+#'   Note that \code{null_median} and \code{p} describe the mean over all items,
+#'   not one item. The null of a mean is narrower than one item's by roughly
+#'   \eqn{\sqrt{n}}, so it is not a band to read a single deviation against; for
+#'   that, permute the labels and keep every item's own deviation.
+#' @seealso \code{\link{mantel_test}}, which scores the ring order from
+#'   distances rather than angles and carries the confirmatory weight.
+#' @examples
+#' \dontrun{
+#' vals <- c("self-direction", "stimulation", "hedonism", "achievement",
+#'           "power", "security", "conformity", "tradition",
+#'           "benevolence", "universalism")
+#' emb  <- embed(vals, provider = "gemini")
+#' cd  <- circumplex_deviation(emb, n_perm = 999)
+#' round(cd$signed, 1)
+#' }
+#' @export
+circumplex_deviation <- function(emb, angles = NULL, n_perm = 999) {
+  n   <- nrow(emb)
+  ang <- if (is.null(angles)) (seq_len(n) - 1) * 2 * pi / n else angles
+  stopifnot(length(ang) == n)
+  X <- stats::prcomp(emb, center = TRUE)$x[
+         , seq_len(min(n - 1, ncol(emb))), drop = FALSE]
+  C <- scale(cbind(cos(ang), sin(ang)), scale = FALSE)
+  .pa <- function(Z) {
+    sv <- svd(crossprod(Z, C))
+    Y  <- Z %*% (sv$u[, 1:2] %*% t(sv$v))
+    th <- atan2(Y[, 2], Y[, 1])
+    d  <- atan2(sin(th - ang), cos(th - ang))
+    o  <- atan2(mean(sin(d)), mean(cos(d)))       # align by the best overall rotation
+    sg <- atan2(sin(th - ang - o), cos(th - ang - o)) * 180 / pi
+    R  <- matrix(c(cos(o), sin(o), -sin(o), cos(o)), 2)
+    list(xy = Y %*% R, theta = th - o, signed = sg, mean_abs = mean(abs(sg)))
+  }
+  obs <- .pa(X)
+  nl <- if (n_perm > 0)
+    vapply(seq_len(n_perm),
+           function(i) .pa(X[sample(n), , drop = FALSE])$mean_abs, numeric(1))
+    else NA_real_
+  rownames(obs$xy) <- rownames(emb)
+  list(coords = obs$xy, theory = ang, observed = obs$theta,
+       signed = stats::setNames(obs$signed, rownames(emb)),
+       mean_abs = obs$mean_abs,
+       null_median = if (n_perm > 0) stats::median(nl) else NA_real_,
+       p = if (n_perm > 0) (1 + sum(nl <= obs$mean_abs)) / (n_perm + 1) else NA_real_)
 }

@@ -33,6 +33,16 @@
 
 ## 変えた仕様
 
+* **同梱していたデータをすべて外した。** このパッケージが提供するのは関数で
+  あってデータセットではない。`panas_items`、`panas_ja_validated`、
+  `schwartz_items` は第三者が著作権を持つ尺度項目であり、しかもパッケージの
+  どの関数からも使われていなかった。`get_bfi_items()` は `psych::bfi.dictionary`
+  を整形して返すだけで、これも他のどこからも使われていない。`valence_anchors`
+  と `prestige_anchors` は本稿が作ったものだが、同じくデータであり、
+  `semantic_projection()` の用例に直接書き込む形に改めた。`R/data-items.R` は
+  削除した。論文で使った材料は OSF の寄託物 `script/items_data.R` にある。
+
+
 * `plot_bilingual()` の `ve_en`・`ve_ja`・`title` を省略可能にした（本体で
   使っていない引数を必須で受けていた）。
 * 利用者に見えるメッセージを英語にした。

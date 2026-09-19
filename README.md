@@ -309,20 +309,21 @@ embeddings and a structure you specified **before** looking at the result, and
 tests it against a permutation null.
 
 ```r
-items <- get_bfi_items()          # 25 Big Five item texts, with factor labels
-emb   <- embed(items$en)
+items <- psych::bfi.dictionary[1:25, ]   # 25 Big Five item texts
+fct   <- substr(rownames(items), 1, 1)   # A C E N O
+emb   <- embed(items$Item)
 
 # Do items of the same factor sit closer than items of different factors?
-d <- test_delta(cos_sim_matrix(emb), items$factor)
+d <- test_delta(cos_sim_matrix(emb), fct)
 d$delta_std   # divided by SD(between); the raw delta is not comparable across models
 
 # Does clustering recover the five factors?
-a <- test_ari(emb, items$factor, k = 5)
+a <- test_ari(emb, fct, k = 5)
 a[c("ari", "p")]
 
 # Do two spaces agree about the relations among the same items?
-emb_ja <- embed(items$ja)
-mantel_test(cos_sim_matrix(emb), cos_sim_matrix(emb_ja))
+emb2 <- embed(items$Item, provider = "openai")
+mantel_test(cos_sim_matrix(emb), cos_sim_matrix(emb2))
 ```
 
 | Function | Question it answers |
@@ -365,8 +366,9 @@ dimensions your construct has. Eigenvalue rules and network methods applied to a
 embedding similarity matrix return artifacts of the space rather than properties
 of the construct. Fix the structure from theory, then test it.
 
-Built-in materials for trying things out: `get_bfi_items()`, `panas_items`,
-`schwartz_items`, `valence_anchors`, `prestige_anchors`.
+This package ships functions, not datasets. It carries no scale items and no
+anchor sets: those belong to the instruments and studies they come from, and
+you supply your own. The materials used in the paper are in its OSF deposit.
 
 ## 9. Long documents: interviews, diaries, transcripts
 

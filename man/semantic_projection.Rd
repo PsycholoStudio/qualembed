@@ -36,22 +36,22 @@ The axis is \code{a = colMeans(high_mat) - colMeans(low_mat)} and the score
 of an item \code{x} is \code{sum(x * a) / sqrt(sum(a^2))}.
 }
 \examples{
-# Anchors ship as character vectors; embed them with the items, then
-# subset the matrix. Keep drop = FALSE: with the thinned set ($C, one
-# word per pole) the subset would otherwise stop being a matrix.
-a <- valence_anchors$en$A
+# Choose the two poles yourself: a handful of words or phrases that differ
+# on the axis you mean and on as little else as possible. Embed them with
+# the items, then subset the matrix. Keep drop = FALSE, or a one-word pole
+# would stop being a matrix.
+high <- c("happy", "pleased", "delighted")
+low  <- c("sad", "unhappy", "miserable")
 \dontrun{
 items <- c("cheerful", "downcast", "content")
-e <- embed(c(items, a$high, a$low), provider = "gemini")
+e <- embed(c(items, high, low), provider = "gemini")
 semantic_projection(e[items, ],
-                    e[a$high, , drop = FALSE],
-                    e[a$low, , drop = FALSE])
+                    e[high, , drop = FALSE],
+                    e[low, , drop = FALSE])
 }
 }
 \seealso{
-\code{\link{valence_anchors}} and \code{\link{prestige_anchors}}
-  for anchor sets shipped with the package,
-  \code{\link{coords_2d}}, whose \code{axis} argument takes the same
+\code{\link{coords_2d}}, whose \code{axis} argument takes the same
   anchor contrast, and \code{\link{plot_arc}}, which projects segments onto
   it.
 }

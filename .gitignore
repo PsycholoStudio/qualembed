@@ -1,0 +1,16 @@
+# R
+.Rhistory
+.RData
+.Rproj.user
+*.Rproj
+
+# API キー（絶対にコミットしない）
+.Renviron
+.env
+
+# R CMD build / check の生成物
+*.Rcheck/
+*.tar.gz
+
+# OS
+.DS_Store

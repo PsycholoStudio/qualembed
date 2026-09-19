@@ -4,7 +4,15 @@
 \alias{trajectory_null}
 \title{Test a trajectory statistic against reorderings of the same document}
 \usage{
-trajectory_null(emb, seg, n_perm = 999, stat = "path_length", lag_min = 3)
+trajectory_null(
+  emb,
+  seg,
+  n_perm = 999,
+  stat = "path_length",
+  lag_min = 3,
+  keep_null = FALSE,
+  alternative = c("two.sided", "less", "greater")
+)
 }
 \arguments{
 \item{emb}{A numeric matrix of segment embeddings, one row per segment;
@@ -22,6 +30,14 @@ contract.}
 
 \item{lag_min}{Integer; for \code{stat = "far_mean"}, the smallest
 separation in segment positions that counts as distant. Defaults to 3.}
+
+\item{keep_null}{attach the permutation draws (one numeric vector per
+returned row, in row order) as the \code{"null"} attribute of the result.}
+
+\item{alternative}{direction of the test: \code{"two.sided"} (the default)
+where the statistic predicts no sign, \code{"less"} where the observed
+value is predicted to fall below its shuffles, \code{"greater"} for the
+opposite prediction.}
 }
 \value{
 A data frame with one row per document of at least three segments
@@ -71,7 +87,10 @@ in short documents: at the default \code{lag_min} a five-segment document
 has three of them and a four-segment one has a single pair, so the mean is
 not worth reading below about six segments.
 Permutation is within document: documents are tested independently and the
-p values are not corrected across them.
+p values are not corrected across them. If you then read the smallest p
+among several documents, that smallest value is a search result and not a
+single test; pass \code{keep_null = TRUE} and build its null from the draws
+rather than moving the threshold.
 }
 \seealso{
 \code{\link{trajectory_stats}}, \code{\link{plot_recurrence}},
