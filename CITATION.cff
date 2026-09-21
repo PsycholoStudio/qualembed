@@ -9,8 +9,8 @@ authors:
     given-names: Toshizumi
     email: toshizumi.muta@psycholo.studio
     affiliation: Psycholo Studio
-version: 1.0.0
-date-released: 2026-09-19
+version: 1.0.1
+date-released: 2026-09-22
 doi: 10.5281/zenodo.22682901
 license: GPL-3.0-or-later
 repository-code: "https://github.com/PsycholoStudio/qualembed"
@@ -36,3 +36,6 @@ references:
       - family-names: Muta
         given-names: Toshizumi
     year: 2026
+    journal: PsyArXiv
+    doi: 10.31234/osf.io/6hxsw_v2
+    url: "https://osf.io/6hxsw"

@@ -5,7 +5,8 @@ bibentry(
   title    = "qualembed: Embedding-Based Semantic Measurement and Calibration for Survey and Qualitative Text",
   author   = person("Toshizumi", "Muta"),
   year     = "2026",
-  note     = "R package version 1.0.0",
+  note     = "R package version 1.0.1",
+  doi      = "10.5281/zenodo.22682901",
   url      = "https://github.com/PsycholoStudio/qualembed"
 )
 
@@ -14,5 +15,7 @@ bibentry(
   title    = "Embedding qualitative data in LLM semantic space: A tutorial on conceptualization, measurement, and validation",
   author   = person("Toshizumi", "Muta"),
   year     = "2026",
-  journal  = "PsyArXiv"
+  journal  = "PsyArXiv",
+  doi      = "10.31234/osf.io/6hxsw_v2",
+  url      = "https://osf.io/6hxsw"
 )

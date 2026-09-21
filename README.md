@@ -582,6 +582,27 @@ embedding matrices for the paper are deposited on OSF (<https://doi.org/10.17605
 citation("qualembed")
 ```
 
+```
+To cite qualembed, cite both the software and the paper it was written
+for.
+
+  Muta T (2026). _qualembed: Embedding-Based Semantic Measurement and
+  Calibration for Survey and Qualitative Text_.
+  doi:10.5281/zenodo.22682901
+  <https://doi.org/10.5281/zenodo.22682901>, R package version 1.0.1,
+  <https://github.com/PsycholoStudio/qualembed>.
+
+  Muta T (2026). “Embedding qualitative data in LLM semantic space: A
+  tutorial on conceptualization, measurement, and validation.”
+  _PsyArXiv_. doi:10.31234/osf.io/6hxsw_v2
+  <https://doi.org/10.31234/osf.io/6hxsw_v2>, <https://osf.io/6hxsw>.
+```
+
+The software entry carries Zenodo's concept DOI, which always resolves to the
+latest archived version. The paper's DOI is version-specific
+(`10.31234/osf.io/6hxsw_v2`); <https://osf.io/6hxsw> resolves to whichever
+version is current.
+
 ## License
 
 GPL (>= 3). Issues and pull requests: <https://github.com/PsycholoStudio/qualembed>.
